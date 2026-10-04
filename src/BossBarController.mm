@@ -26,14 +26,14 @@ static constexpr size_t kEntityIsDeadOffset = 0x1C3;
 static constexpr size_t kEntityHPOffset = 0x354;
 static constexpr size_t kEntityMaxHPOffset = 0x358;
 
-// Entity Status Flags
-static constexpr uint64_t FLAG_POISON = 1ULL << 10;
-static constexpr uint64_t FLAG_CONFUSION = 1ULL << 11;
-static constexpr uint64_t FLAG_CHARM = 1ULL << 12;
-static constexpr uint64_t FLAG_FEAR = 1ULL << 13;
-static constexpr uint64_t FLAG_FREEZE = 1ULL << 14;
-static constexpr uint64_t FLAG_SLOW = 1ULL << 15;
-static constexpr uint64_t FLAG_BURN = 1ULL << 30;
+// Entity Status Flags (exact bitshifts in The Binding of Isaac: Repentance)
+static constexpr uint64_t FLAG_FREEZE    = 1ULL << 5;
+static constexpr uint64_t FLAG_POISON    = 1ULL << 6;
+static constexpr uint64_t FLAG_SLOW      = 1ULL << 7;
+static constexpr uint64_t FLAG_CHARM     = 1ULL << 8;
+static constexpr uint64_t FLAG_CONFUSION = 1ULL << 9;
+static constexpr uint64_t FLAG_FEAR      = 1ULL << 11;
+static constexpr uint64_t FLAG_BURN      = 1ULL << 12;
 
 struct ActiveBossData {
     uintptr_t entityPtr;
@@ -49,7 +49,7 @@ struct ActiveBossData {
     uint64_t flags;
 };
 
-// Passthrough view that ignores all touch events so Isaac's controls receive them
+// Passthrough view that ignores all touch events so Isaac's virtual controls receive them
 @interface BossBarPassthroughView : UIView
 @end
 
@@ -61,9 +61,19 @@ struct ActiveBossData {
 
 #pragma mark - Texture Cache & Slicing
 
+@interface BossBarIconEntry : NSObject
+@property (nonatomic, strong) UIImage *image;
+@property (nonatomic, strong) NSArray<UIImage *> *animationImages;
+@property (nonatomic, assign) BOOL isLarge; // 64x64
+@end
+
+@implementation BossBarIconEntry
+@end
+
 @interface BossBarTextureEntry : NSObject
 @property (nonatomic, strong) UIImage *bgImage;
 @property (nonatomic, strong) UIImage *fillImage;
+@property (nonatomic, strong) NSArray<UIImage *> *fillAnimationImages;
 @property (nonatomic, strong) UIImage *damageFlashImage;
 @property (nonatomic, strong) UIImage *overlayImage;
 @end
@@ -74,13 +84,13 @@ struct ActiveBossData {
 @interface BossBarTextureCache : NSObject
 + (instancetype)sharedCache;
 - (BossBarTextureEntry *)entryForStyle:(BossBarStyleInfo)style bundle:(NSBundle *)bundle;
-- (UIImage *)iconForRelPath:(NSString *)relPath bundle:(NSBundle *)bundle;
+- (BossBarIconEntry *)iconEntryForRelPath:(NSString *)relPath bundle:(NSBundle *)bundle;
 - (UIImage *)statusIconForIndex:(int)index bundle:(NSBundle *)bundle;
 @end
 
 @interface BossBarTextureCache ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, BossBarTextureEntry *> *styleEntries;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, UIImage *> *iconCache;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, BossBarIconEntry *> *iconCache;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, UIImage *> *statusIconCache;
 @property (nonatomic, strong) UIImage *statusSheet;
 @end
@@ -154,7 +164,6 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
     NSString *fullPath = [self resolveResourcePath:key bundle:bundle];
     if (!fullPath) {
-        // Fallback to default
         fullPath = [self resolveResourcePath:@"bosshp_bars/custom_bosshp_default.png" bundle:bundle];
     }
     if (!fullPath) return nil;
@@ -168,23 +177,50 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     // Background Frame: (0, 32, 160, 32)
     entry.bgImage = SliceCGImage(cgSheet, CGRectMake(0, 32, 160, 32));
 
-    // Fill: (20, 0, 120, 32) or (170, 0, 120, 32) for Colostomia
-    CGFloat fillCropX = [key containsString:@"colostomia"] ? 170.0 : 20.0;
-    UIImage *rawFill = SliceCGImage(cgSheet, CGRectMake(fillCropX, 0, 120, 32));
+    NSString *lowerKey = key.lowercaseString;
 
-    if (style.isDefaultTint) {
-        // Authentic Repentance red tint: (0.84, 0.12, 0.15)
-        entry.fillImage = TintImage(rawFill, [UIColor colorWithRed:0.84 green:0.12 blue:0.15 alpha:1.0]);
-        // Amber flash on damage: (0.95, 0.78, 0.25)
-        entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithRed:0.95 green:0.78 blue:0.25 alpha:1.0]);
-    } else {
-        // Natural thematic texture color (Delirium yellow, Mother bone, Beast lava, etc.)
+    // 1. Dogma TV static animated fill
+    if ([lowerKey containsString:@"dogma"]) {
+        NSMutableArray<UIImage *> *staticFrames = [NSMutableArray arrayWithCapacity:4];
+        for (int f = 0; f < 4; ++f) {
+            CGImageRef stripCG = CGImageCreateWithImageInRect(cgSheet, CGRectMake(170, f * 15, 120, 10));
+            if (stripCG) {
+                UIImage *stripImg = [UIImage imageWithCGImage:stripCG scale:1.0 orientation:UIImageOrientationUp];
+                UIGraphicsBeginImageContextWithOptions(CGSizeMake(120, 32), NO, 1.0);
+                [stripImg drawInRect:CGRectMake(0, 12, 120, 10)];
+                UIImage *fullFrame = UIGraphicsGetImageFromCurrentImageContext();
+                UIGraphicsEndImageContext();
+                CGImageRelease(stripCG);
+                if (fullFrame) [staticFrames addObject:fullFrame];
+            }
+        }
+        entry.fillAnimationImages = staticFrames;
+        entry.fillImage = staticFrames.firstObject;
+        entry.damageFlashImage = TintImage(entry.fillImage, [UIColor colorWithWhite:1.0 alpha:0.9]);
+    }
+    // 2. Colostomia (crop at X=170)
+    else if ([lowerKey containsString:@"colostomia"]) {
+        UIImage *rawFill = SliceCGImage(cgSheet, CGRectMake(170, 0, 120, 32));
         entry.fillImage = rawFill;
-        // Bright white/amber damage flash
         entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.9]);
     }
+    // 3. Thematic / Standard boss bars
+    else {
+        UIImage *rawFill = SliceCGImage(cgSheet, CGRectMake(20, 0, 120, 32));
+        if (style.isDefaultTint) {
+            // Authentic Repentance red tint: (0.84, 0.12, 0.15)
+            entry.fillImage = TintImage(rawFill, [UIColor colorWithRed:0.84 green:0.12 blue:0.15 alpha:1.0]);
+            // Amber flash on damage: (0.95, 0.78, 0.25)
+            entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithRed:0.95 green:0.78 blue:0.25 alpha:1.0]);
+        } else {
+            // Natural thematic texture color (Delirium yellow, Mother bone, Beast lava, etc.)
+            entry.fillImage = rawFill;
+            // Bright white damage flash
+            entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.9]);
+        }
+    }
 
-    // Overlay (e.g. Mother bones/overgrowth or Beast overlay)
+    // 4. Thematic Overlays (Mother bones/overgrowth, Beast fire overlay)
     if (style.overlayRelPath && strlen(style.overlayRelPath) > 0) {
         NSString *ovPath = [self resolveResourcePath:[NSString stringWithUTF8String:style.overlayRelPath] bundle:bundle];
         if (ovPath) {
@@ -199,9 +235,9 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     return entry;
 }
 
-- (UIImage *)iconForRelPath:(NSString *)relPath bundle:(NSBundle *)bundle {
+- (BossBarIconEntry *)iconEntryForRelPath:(NSString *)relPath bundle:(NSBundle *)bundle {
     if (!relPath.length) return nil;
-    UIImage *cached = self.iconCache[relPath];
+    BossBarIconEntry *cached = self.iconCache[relPath];
     if (cached) return cached;
 
     NSString *pathWithPrefix = [NSString stringWithFormat:@"bosshp_icons/%@", relPath];
@@ -212,17 +248,47 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     if (!fullPath) return nil;
 
     UIImage *raw = [UIImage imageWithContentsOfFile:fullPath];
-    if (!raw) return nil;
+    if (!raw || !raw.CGImage) return nil;
+    CGImageRef cg = raw.CGImage;
 
-    // Multi-frame animation spritesheets (e.g. dogma_tv.png is 64x64): take top-left 32x32 frame
-    if (raw.size.width == 64.0 && (raw.size.height == 64.0 || raw.size.height == 32.0)) {
-        raw = SliceCGImage(raw.CGImage, CGRectMake(0, 0, 32, 32));
+    BossBarIconEntry *res = [[BossBarIconEntry alloc] init];
+    NSString *lower = relPath.lowercaseString;
+
+    // Dogma Phase 2 wings: 128x128 containing four 64x64 animated frames
+    if ([lower containsString:@"dogma_phase2"]) {
+        NSMutableArray<UIImage *> *frames = [NSMutableArray arrayWithCapacity:4];
+        [frames addObject:SliceCGImage(cg, CGRectMake(0, 0, 64, 64))];
+        [frames addObject:SliceCGImage(cg, CGRectMake(64, 0, 64, 64))];
+        [frames addObject:SliceCGImage(cg, CGRectMake(0, 64, 64, 64))];
+        [frames addObject:SliceCGImage(cg, CGRectMake(64, 64, 64, 64))];
+        res.animationImages = frames;
+        res.image = frames.firstObject;
+        res.isLarge = YES;
+    }
+    // Dogma Phase 1 TV static: 64x64 containing four 32x32 animated frames
+    else if ([lower containsString:@"dogma_tv"] || [lower containsString:@"final/dogma.png"]) {
+        NSMutableArray<UIImage *> *frames = [NSMutableArray arrayWithCapacity:4];
+        [frames addObject:SliceCGImage(cg, CGRectMake(0, 0, 32, 32))];
+        [frames addObject:SliceCGImage(cg, CGRectMake(32, 0, 32, 32))];
+        [frames addObject:SliceCGImage(cg, CGRectMake(0, 32, 32, 32))];
+        [frames addObject:SliceCGImage(cg, CGRectMake(32, 32, 32, 32))];
+        res.animationImages = frames;
+        res.image = frames.firstObject;
+        res.isLarge = NO;
+    }
+    // Ultra Harbingers & Mega Satan (64x64 large icons)
+    else if (raw.size.width >= 60.0 && raw.size.height >= 60.0) {
+        res.image = raw;
+        res.isLarge = YES;
+    }
+    // Standard 32x32 icons
+    else {
+        res.image = raw;
+        res.isLarge = NO;
     }
 
-    if (raw) {
-        self.iconCache[relPath] = raw;
-    }
-    return raw;
+    self.iconCache[relPath] = res;
+    return res;
 }
 
 - (UIImage *)statusIconForIndex:(int)index bundle:(NSBundle *)bundle {
@@ -238,7 +304,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     }
     if (!self.statusSheet || !self.statusSheet.CGImage) return nil;
 
-    // 16x16 frames in horizontal row: index 0..8 at Y=0, index 9..17 at Y=16
+    // 16x16 frames in horizontal rows (9 frames per row)
     CGFloat x = (index % 9) * 16.0;
     CGFloat y = (index / 9) * 16.0;
     UIImage *icon = SliceCGImage(self.statusSheet.CGImage, CGRectMake(x, y, 16, 16));
@@ -254,7 +320,6 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
 @interface SingleBossBarView : UIView
 
-@property (nonatomic, strong) UIImageView *iconView;
 @property (nonatomic, strong) UIView *barContainer;
 @property (nonatomic, strong) UIImageView *bgImageView;
 @property (nonatomic, strong) UIView *damageFillContainer;
@@ -262,13 +327,15 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 @property (nonatomic, strong) UIView *fillContainer;
 @property (nonatomic, strong) UIImageView *fillImageView;
 @property (nonatomic, strong) UIImageView *overlayImageView;
+@property (nonatomic, strong) UIImageView *iconView;
+
 @property (nonatomic, strong) UIView *statusContainer;
 @property (nonatomic, strong) NSMutableArray<UIImageView *> *statusIcons;
 
 @property (nonatomic, assign) CGFloat pixelScale;
 @property (nonatomic, assign) CGFloat fillTotalWidth;
 @property (nonatomic, assign) CGFloat fillOffsetX;
-@property (nonatomic, assign) float displayedRatio;
+@property (nonatomic, assign) CGFloat extraLeftPad;
 
 - (void)updateWithData:(const ActiveBossData &)data bundle:(NSBundle *)bundle;
 
@@ -282,43 +349,39 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         self.backgroundColor = UIColor.clearColor;
         self.userInteractionEnabled = NO;
         _pixelScale = 1.75;
-        _displayedRatio = 1.0f;
         _statusIcons = [NSMutableArray array];
 
-        // 160x32 bar frame at scale 1.75 = 280 x 56 pt
+        // Layout constants at scale 1.75:
+        // Background frame: 160 x 32 px -> 280 x 56 pt
         CGFloat barW = 160.0 * _pixelScale;
         CGFloat barH = 32.0 * _pixelScale;
-        CGFloat iconSize = 32.0 * _pixelScale;
-        CGFloat iconOverlap = 6.0 * _pixelScale;
+        _extraLeftPad = 48.0; // Space for status badges to the left of the portrait
 
-        _fillOffsetX = 20.0 * _pixelScale;
-        _fillTotalWidth = 120.0 * _pixelScale;
+        _fillOffsetX = 20.0 * _pixelScale;   // 35.0 pt
+        _fillTotalWidth = 120.0 * _pixelScale; // 210.0 pt
 
-        // 1. Icon View on the left
-        _iconView = [[UIImageView alloc] initWithFrame:CGRectMake(0, (frame.size.height - iconSize) / 2.0, iconSize, iconSize)];
-        _iconView.contentMode = UIViewContentModeScaleAspectFit;
-        _iconView.layer.magnificationFilter = kCAFilterNearest;
-        _iconView.layer.minificationFilter = kCAFilterNearest;
-        _iconView.userInteractionEnabled = NO;
-        [self addSubview:_iconView];
+        // 1. Status effects container (to the left of the boss portrait)
+        _statusContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, _extraLeftPad, barH)];
+        _statusContainer.backgroundColor = UIColor.clearColor;
+        _statusContainer.userInteractionEnabled = NO;
+        [self addSubview:_statusContainer];
 
-        // 2. Bar Frame Container
-        CGFloat barX = iconSize - iconOverlap;
-        _barContainer = [[UIView alloc] initWithFrame:CGRectMake(barX, (frame.size.height - barH) / 2.0, barW, barH)];
+        // 2. Bar Container (seamlessly hosts background frame, fills, overlay, and boss portrait)
+        _barContainer = [[UIView alloc] initWithFrame:CGRectMake(_extraLeftPad, 0, barW, barH)];
         _barContainer.backgroundColor = UIColor.clearColor;
         _barContainer.userInteractionEnabled = NO;
         _barContainer.clipsToBounds = NO;
         [self addSubview:_barContainer];
 
-        // 3. Background Frame Sprite
-        _bgImageView = [[UIImageView alloc] initWithFrame:_barContainer.bounds];
+        // 3. Background Frame Sprite (starts at X=0, frame notch at X=18..26)
+        _bgImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, barW, barH)];
         _bgImageView.contentMode = UIViewContentModeScaleToFill;
         _bgImageView.layer.magnificationFilter = kCAFilterNearest;
         _bgImageView.layer.minificationFilter = kCAFilterNearest;
         _bgImageView.userInteractionEnabled = NO;
         [_barContainer addSubview:_bgImageView];
 
-        // 4. Delayed Damage Flash Fill Container (clips from right)
+        // 4. Delayed Damage Flash Fill Container
         _damageFillContainer = [[UIView alloc] initWithFrame:CGRectMake(_fillOffsetX, 0, _fillTotalWidth, barH)];
         _damageFillContainer.clipsToBounds = YES;
         _damageFillContainer.backgroundColor = UIColor.clearColor;
@@ -332,7 +395,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         _damageFillImageView.userInteractionEnabled = NO;
         [_damageFillContainer addSubview:_damageFillImageView];
 
-        // 5. Main HP Fill Container (clips from right)
+        // 5. Main HP Fill Container
         _fillContainer = [[UIView alloc] initWithFrame:CGRectMake(_fillOffsetX, 0, _fillTotalWidth, barH)];
         _fillContainer.clipsToBounds = YES;
         _fillContainer.backgroundColor = UIColor.clearColor;
@@ -346,19 +409,25 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         _fillImageView.userInteractionEnabled = NO;
         [_fillContainer addSubview:_fillImageView];
 
-        // 6. Thematic Overlay Sprite (Mother creeping bones, Beast overlay, etc.)
-        _overlayImageView = [[UIImageView alloc] initWithFrame:_barContainer.bounds];
+        // 6. Thematic Overlay Sprite (Mother creeping bones, Beast fire)
+        _overlayImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, barW, barH)];
         _overlayImageView.contentMode = UIViewContentModeScaleToFill;
         _overlayImageView.layer.magnificationFilter = kCAFilterNearest;
         _overlayImageView.layer.minificationFilter = kCAFilterNearest;
         _overlayImageView.userInteractionEnabled = NO;
         [_barContainer addSubview:_overlayImageView];
 
-        // 7. Status Effects Container above the bar
-        _statusContainer = [[UIView alloc] initWithFrame:CGRectMake(barX + _fillOffsetX, (frame.size.height - barH) / 2.0 - 20, _fillTotalWidth, 18)];
-        _statusContainer.backgroundColor = UIColor.clearColor;
-        _statusContainer.userInteractionEnabled = NO;
-        [self addSubview:_statusContainer];
+        // 7. Boss Portrait Icon (centered at X=16, Y=16 of bar coordinate space to seamlessly sit in notch)
+        CGFloat iconCenter = 16.0 * _pixelScale;
+        CGFloat defaultIconSize = 32.0 * _pixelScale;
+        _iconView = [[UIImageView alloc] initWithFrame:CGRectMake(iconCenter - defaultIconSize / 2.0,
+                                                                 iconCenter - defaultIconSize / 2.0,
+                                                                 defaultIconSize, defaultIconSize)];
+        _iconView.contentMode = UIViewContentModeScaleAspectFit;
+        _iconView.layer.magnificationFilter = kCAFilterNearest;
+        _iconView.layer.minificationFilter = kCAFilterNearest;
+        _iconView.userInteractionEnabled = NO;
+        [_barContainer addSubview:_iconView];
     }
     return self;
 }
@@ -375,45 +444,81 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     BossBarTextureEntry *entry = [cache entryForStyle:style bundle:bundle];
     if (entry) {
         _bgImageView.image = entry.bgImage;
-        _fillImageView.image = entry.fillImage;
         _damageFillImageView.image = entry.damageFlashImage;
         _overlayImageView.image = entry.overlayImage;
         _overlayImageView.hidden = (entry.overlayImage == nil);
+
+        // Animated TV static for Dogma bar fill
+        if (entry.fillAnimationImages.count > 1) {
+            if (!_fillImageView.isAnimating) {
+                _fillImageView.animationImages = entry.fillAnimationImages;
+                _fillImageView.animationDuration = 0.25;
+                [_fillImageView startAnimating];
+            }
+        } else {
+            if (_fillImageView.isAnimating) {
+                [_fillImageView stopAnimating];
+                _fillImageView.animationImages = nil;
+            }
+            _fillImageView.image = entry.fillImage;
+        }
     }
 
     // 2. Resolve and apply Boss Icon
     NSString *iconRel = [NSString stringWithUTF8String:data.iconRelPath.c_str()];
-    _iconView.image = [cache iconForRelPath:iconRel bundle:bundle];
+    BossBarIconEntry *iconEntry = [cache iconEntryForRelPath:iconRel bundle:bundle];
+    if (iconEntry) {
+        CGFloat centerCoord = 16.0 * _pixelScale;
+        if (iconEntry.isLarge) {
+            CGFloat size = 64.0 * _pixelScale;
+            _iconView.frame = CGRectMake(centerCoord - size / 2.0, centerCoord - size / 2.0, size, size);
+        } else {
+            CGFloat size = 32.0 * _pixelScale;
+            _iconView.frame = CGRectMake(centerCoord - size / 2.0, centerCoord - size / 2.0, size, size);
+        }
+
+        if (iconEntry.animationImages.count > 1) {
+            if (!_iconView.isAnimating) {
+                _iconView.animationImages = iconEntry.animationImages;
+                _iconView.animationDuration = 0.25;
+                [_iconView startAnimating];
+            }
+        } else {
+            if (_iconView.isAnimating) {
+                [_iconView stopAnimating];
+                _iconView.animationImages = nil;
+            }
+            _iconView.image = iconEntry.image;
+        }
+    }
 
     // 3. Smooth HP bar draining animation
     float maxHP = data.maxHP > 0.0f ? data.maxHP : 1.0f;
     float targetRatio = MAX(0.0f, MIN(1.0f, data.currentHP / maxHP));
     CGFloat targetWidth = _fillTotalWidth * targetRatio;
 
-    // Instant main fill update (smooth 0.1s curve)
+    CGFloat barH = 32.0 * _pixelScale;
     [UIView animateWithDuration:0.10 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        self.fillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, self.barContainer.bounds.size.height);
+        self.fillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, barH);
     } completion:nil];
 
-    // Delayed damage flash (lingering amber bar)
     [UIView animateWithDuration:0.35 delay:0.12 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-        self.damageFillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, self.barContainer.bounds.size.height);
+        self.damageFillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, barH);
     } completion:nil];
 
-    _displayedRatio = targetRatio;
-
-    // 4. Status Effect Badges (pixel icons, no text)
+    // 4. Status Effect Badges (pixel icons, rendered directly to the left of the portrait)
     std::vector<int> activeStatusIndices;
-    if (data.flags & FLAG_BURN) activeStatusIndices.push_back(0);        // Burn
-    if (data.flags & FLAG_CHARM) activeStatusIndices.push_back(1);       // Charm
-    if (data.flags & FLAG_CONFUSION) activeStatusIndices.push_back(2);   // Confusion
-    if (data.flags & FLAG_FEAR) activeStatusIndices.push_back(3);        // Fear
-    if (data.flags & FLAG_FREEZE) activeStatusIndices.push_back(4);      // Freeze
-    if (data.flags & FLAG_POISON) activeStatusIndices.push_back(5);      // Poison
-    if (data.flags & FLAG_SLOW) activeStatusIndices.push_back(6);        // Slow
+    if (data.flags & FLAG_POISON)    activeStatusIndices.push_back(5);  // Green droplet
+    if (data.flags & FLAG_BURN)      activeStatusIndices.push_back(0);  // Orange flame
+    if (data.flags & FLAG_FREEZE)    activeStatusIndices.push_back(12); // Cyan snowflake
+    if (data.flags & FLAG_SLOW)      activeStatusIndices.push_back(6);  // Snail
+    if (data.flags & FLAG_CHARM)     activeStatusIndices.push_back(1);  // Pink heart
+    if (data.flags & FLAG_FEAR)      activeStatusIndices.push_back(3);  // Purple face
+    if (data.flags & FLAG_CONFUSION) activeStatusIndices.push_back(2);  // Confusion stars
 
     while (_statusIcons.count < activeStatusIndices.size()) {
-        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 16 * _pixelScale, 16 * _pixelScale)];
+        CGFloat sSize = 16.0 * _pixelScale;
+        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake(0, (barH - sSize) / 2.0, sSize, sSize)];
         iv.contentMode = UIViewContentModeScaleAspectFit;
         iv.layer.magnificationFilter = kCAFilterNearest;
         iv.layer.minificationFilter = kCAFilterNearest;
@@ -426,13 +531,16 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         [_statusIcons removeLastObject];
     }
 
-    CGFloat sx = 0.0;
-    CGFloat sSpacing = 4.0;
+    // Align status badges right-to-left towards the boss portrait
+    CGFloat badgeSize = 16.0 * _pixelScale;
+    CGFloat badgeSpacing = 3.0;
+    CGFloat rightEdge = _extraLeftPad - 2.0;
+
     for (size_t i = 0; i < activeStatusIndices.size(); ++i) {
         UIImageView *iv = _statusIcons[i];
         iv.image = [cache statusIconForIndex:activeStatusIndices[i] bundle:bundle];
-        iv.frame = CGRectMake(sx, 0, 16 * _pixelScale, 16 * _pixelScale);
-        sx += 16 * _pixelScale + sSpacing;
+        CGFloat x = rightEdge - (i + 1) * badgeSize - i * badgeSpacing;
+        iv.frame = CGRectMake(x, (barH - badgeSize) / 2.0, badgeSize, badgeSize);
     }
 }
 
@@ -506,13 +614,13 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     self.rootView.userInteractionEnabled = NO;
     self.rootView.layer.zPosition = 9999.0f;
 
-    // Scale 1.75: bar 280 pt, icon 56 pt -> total width ~326 pt
     CGFloat pixelScale = 1.75;
-    CGFloat singleBarW = (160.0 + 32.0 - 6.0) * pixelScale;
-    CGFloat singleBarH = 32.0 * pixelScale + 20.0; // Extra room for status badges
+    CGFloat extraLeftPad = 48.0;
+    CGFloat singleBarW = 160.0 * pixelScale + extraLeftPad; // 328 pt
+    CGFloat singleBarH = 32.0 * pixelScale;                 // 56 pt
     CGFloat bottomInset = 16.0;
     if (@available(iOS 11.0, *)) {
-        bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 6.0);
+        bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 4.0);
     }
 
     self.containerView = [[UIView alloc] initWithFrame:CGRectMake((window.bounds.size.width - singleBarW) / 2.0,
@@ -588,13 +696,34 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         }
     }
 
-    // Scan entities in the room
+    // Scan entities in current room
     uintptr_t entitiesArrayPtr = 0;
     int32_t count = 0;
     if (!SafeRead(room + kRoomEntitiesArrayOffset, entitiesArrayPtr) || !entitiesArrayPtr ||
         !SafeRead(room + kRoomEntitiesCountOffset, count) || count <= 0 || count > 2048) {
         [self setOverlayVisible:NO];
         return;
+    }
+
+    // 1. Check if any Ultra Harbinger is present and actively alive during the Beast fight
+    bool hasActiveHarbinger = false;
+    for (int32_t i = 0; i < count; ++i) {
+        uintptr_t entity = 0;
+        if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), entity) || !entity) continue;
+        uint8_t isDead = 0;
+        SafeRead(entity + kEntityIsDeadOffset, isDead);
+        if (isDead) continue;
+        int32_t type = 0, variant = 0;
+        if (!SafeRead(entity + kEntityTypeOffset, type)) continue;
+        SafeRead(entity + kEntityVariantOffset, variant);
+        if (type == 951 && (variant == 10 || variant == 20 || variant == 30 || variant == 40)) {
+            float hp = 0.0f;
+            SafeRead(entity + kEntityHPOffset, hp);
+            if (hp > 0.0f) {
+                hasActiveHarbinger = true;
+                break;
+            }
+        }
     }
 
     std::vector<ActiveBossData> activeBosses;
@@ -617,6 +746,11 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         // Filter: only boss NPCs (type >= 10 && < 1000)
         if (type < 10 || type >= 1000) continue;
 
+        // Skip dormant Beast (Variant 0) while Ultra Harbingers are still being fought
+        if (type == 951 && variant == 0 && hasActiveHarbinger) {
+            continue;
+        }
+
         float hp = 0.0f;
         float maxHp = 0.0f;
         if (!SafeRead(entity + kEntityHPOffset, hp) || hp <= 0.0f) continue;
@@ -625,14 +759,17 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
         const BossBarInfo *info = FindBossInfo(type, variant);
 
-        // Eligible if in database OR in a boss room (roomType == 5) with significant HP
+        // Eligible if in database OR in a boss room with significant HP
         if (info || (roomType == 5 && maxHp >= 40.0f)) {
-            // Deduplicate multi-part / subsidiary entities of the same boss type (e.g. Mom foot vs doors/eyes)
-            bool foundExistingType = false;
+            // Deduplicate multi-part / subsidiary entities of the same boss
+            // For Type 951 (Harbingers & Beast), variants are distinct bosses
+            bool foundExisting = false;
             for (auto &existing : activeBosses) {
-                if (existing.type == type) {
-                    foundExistingType = true;
-                    // If current entity has larger maxHP (e.g. main body vs appendage), adopt it
+                bool isSameBoss = (type == 951) ? (existing.type == type && existing.variant == variant)
+                                                : (existing.type == type);
+                if (isSameBoss) {
+                    foundExisting = true;
+                    // Adopt main body with highest maxHP
                     if (maxHp > existing.maxHP) {
                         existing.entityPtr = entity;
                         existing.variant = variant;
@@ -643,7 +780,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
                     break;
                 }
             }
-            if (foundExistingType) continue;
+            if (foundExisting) continue;
 
             ActiveBossData b;
             b.entityPtr = entity;
@@ -674,7 +811,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
                 self.loggedFirstDetection = YES;
             }
 
-            if (activeBosses.size() >= 4) break; // Limit to 4 bars max
+            if (activeBosses.size() >= 4) break;
         }
     }
 
@@ -698,15 +835,16 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
 - (void)updateBarsWithBosses:(const std::vector<ActiveBossData> &)bosses {
     CGFloat pixelScale = 1.75;
-    CGFloat singleBarW = (160.0 + 32.0 - 6.0) * pixelScale;
-    CGFloat singleBarH = 32.0 * pixelScale + 20.0;
+    CGFloat extraLeftPad = 48.0;
+    CGFloat singleBarW = 160.0 * pixelScale + extraLeftPad; // 328.0 pt
+    CGFloat singleBarH = 32.0 * pixelScale;                 // 56.0 pt
     CGFloat spacing = 4.0;
     CGFloat totalH = bosses.size() * singleBarH + (bosses.size() - 1) * spacing;
 
     UIWindow *window = self.rootView.window ?: [self findGameWindow];
     CGFloat bottomInset = 16.0;
     if (@available(iOS 11.0, *)) {
-        if (window) bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 6.0);
+        if (window) bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 4.0);
     }
 
     CGRect newFrame = CGRectMake((window.bounds.size.width - singleBarW) / 2.0,
@@ -726,7 +864,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         [self.barViews removeLastObject];
     }
 
-    // Layout each bar view (main boss at bottom, helpers stacked upward)
+    // Stack bottom-up (main boss at bottom)
     for (size_t i = 0; i < bosses.size(); ++i) {
         SingleBossBarView *view = self.barViews[i];
         CGFloat y = (bosses.size() - 1 - i) * (singleBarH + spacing);

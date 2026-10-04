@@ -44,19 +44,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.2
-          name: "Isaac Enhanced Boss Bars iOS v1.0.2"
+          tag_name: v1.0.3
+          name: "Isaac Enhanced Boss Bars iOS v1.0.3"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.2)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.3)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### Features:
-            - **Custom Boss Health Bars**: Replaces the vanilla health bar with stylish, animated boss bars.
-            - **Pixel-Art Boss Portraits**: Includes crisp, authentic boss portraits for over 160+ bosses and champion variants.
-            - **Live Status Effect Indicators**: Live badges for Poison (☠), Burn (🔥), Freeze (❄), Slow (⏱), Charm (💖), and Fear (👻).
-            - **Multi-Boss Support**: Stacks health bars cleanly during multi-boss and Double Trouble encounters.
-            - **Smooth 60/120 FPS Performance**: Built natively with UIKit and CoreAnimation, zero gameplay lag and zero touch interference.
+            ### What's New in v1.0.3:
+            - **Animated Dogma Static**: Dogma's HP bar and TV portrait now actively flicker with authentic animated TV static! Dogma Angel wings are properly sliced and animated.
+            - **Ultra Harbingers & Beast Room**: Full support for Ultra Famine, Ultra Pestilence, Ultra War, and Ultra Death during the Beast fight without getting overshadowed by The Beast.
+            - **Seamless Boss Portrait Layout**: Eliminated the gap between boss portrait and health bar frame, connecting them into a single unified graphic.
+            - **Live Status Effect Badges**: Corrected Isaac Repentance entity status flags — Poison droplet, Burn flame, Freeze snowflake, Charm, Slow, and Fear now render clearly to the left of the boss portrait.
+            - **Complete Vanilla Bar Removal**: Included transparent 1x1 replacements for all 4 vanilla bar textures (`ui_bosshealthbar.png`, `ui_bosshealthbar_static.png`, `ui_bosshealthbar_stone.png`, `ui_bosshealthbar_mini.png`).
 
             ### Installation:
             - **LiveContainer / Jailed**:

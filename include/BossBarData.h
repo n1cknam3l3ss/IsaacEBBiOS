@@ -15,40 +15,42 @@ inline BossBarStyleInfo GetBarStyleInfo(const char *styleName) {
         return { "bosshp_bars/custom_bosshp_default.png", nullptr, true };
     }
     std::string s = styleName;
-    if (s == "Mother") {
+    for (char &c : s) c = (char)tolower((unsigned char)c);
+
+    if (s == "mother") {
         return { "bosshp_bars/bosses/bossbar_mother.png", "bosshp_bars/bosses/bossbar_overlay_mother.png", false };
     }
-    if (s == "Delirium") {
+    if (s == "delirium") {
         return { "bosshp_bars/bosses/bossbar_delirium.png", nullptr, false };
     }
-    if (s == "Dogma") {
+    if (s == "dogma") {
         return { "bosshp_bars/bosses/dogma_bar.png", nullptr, false };
     }
-    if (s == "Beast") {
-        return { "bosshp_bars/bosses/bossbar_beast.png", nullptr, false };
+    if (s == "beast") {
+        return { "bosshp_bars/bosses/bossbar_beast.png", "bosshp_bars/bosses/bossbar_overlay_beast.png", false };
     }
-    if (s == "Hush") {
+    if (s == "hush") {
         return { "bosshp_bars/bosses/bossbar_hush.png", nullptr, false };
     }
-    if (s == "Mega Satan") {
+    if (s == "mega satan" || s == "mega_satan") {
         return { "bosshp_bars/bosses/bossbar_mega_satan.png", nullptr, false };
     }
-    if (s == "Mega Satan Phase 2") {
+    if (s == "mega satan phase 2" || s == "mega_satan_phase2" || s == "mega satan 2") {
         return { "bosshp_bars/bosses/bossbar_mega_satan_phase2.png", nullptr, false };
     }
-    if (s == "Colostomia") {
+    if (s == "colostomia") {
         return { "bosshp_bars/bosses/bossbar_colostomia.png", nullptr, false };
     }
-    if (s == "Dark Esau") {
+    if (s == "dark esau" || s == "darkesau") {
         return { "bosshp_bars/bosses/bossbar_darkesau.png", nullptr, false };
     }
-    if (s == "Steven") {
+    if (s == "steven") {
         return { "bosshp_bars/bosses/bossbar_steven.png", nullptr, false };
     }
-    if (s == "Ultra Greed") {
+    if (s == "ultra greed" || s == "ultra_greed") {
         return { "bosshp_bars/bosses/bossbar_ultra_greed.png", nullptr, false };
     }
-    if (s == "Ultra Greedier") {
+    if (s == "ultra greedier" || s == "ultra_greedier") {
         return { "bosshp_bars/bosses/bossbar_ultra_greedier.png", nullptr, false };
     }
     return { "bosshp_bars/custom_bosshp_default.png", nullptr, true };
@@ -219,9 +221,10 @@ inline const std::unordered_map<int64_t, BossBarInfo>& GetBossDefinitions() {
         { ((int64_t)920 << 16) | 0, { 920, 0, "Horny Boys", "altpath/horny_boys.png", nullptr, {} } },
         { ((int64_t)921 << 16) | 0, { 921, 0, "Clutch", "altpath/clutch.png", nullptr, {} } },
         { ((int64_t)922 << 16) | 0, { 922, 0, "Cadavra", "unused/cadavra.png", nullptr, {} } },
+        { ((int64_t)950 << 16) | 0, { 950, 0, "Dogma", "final/dogma_tv.png", "Dogma", {} } },
         { ((int64_t)950 << 16) | 1, { 950, 1, "Dogma Tv", "final/dogma_tv.png", "Dogma", {} } },
-        { ((int64_t)950 << 16) | 2, { 950, 2, "Dogma Phase2", "final/dogma_phase2.png", "Dogma", {} } },
-        { ((int64_t)951 << 16) | 0, { 951, 0, "Beast", "final/beast.png", "Beast", {} } },
+        { ((int64_t)950 << 16) | 2, { 950, 2, "Dogma Angel", "final/dogma_phase2.png", "Dogma", {} } },
+        { ((int64_t)951 << 16) | 0, { 951, 0, "The Beast", "final/beast.png", "Beast", {} } },
         { ((int64_t)951 << 16) | 10, { 951, 10, "Ultra Famine", "final/ultra_famine.png", nullptr, {} } },
         { ((int64_t)951 << 16) | 20, { 951, 20, "Ultra Pestilence", "final/ultra_pestilence.png", nullptr, {} } },
         { ((int64_t)951 << 16) | 30, { 951, 30, "Ultra War", "final/ultra_war.png", nullptr, {} } },
