@@ -44,10 +44,10 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "Isaac Enhanced Boss Bars iOS v1.0.0"
+          tag_name: v1.0.1
+          name: "Isaac Enhanced Boss Bars iOS v1.0.1"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.0)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.1)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 

@@ -6,6 +6,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <vector>
 #import <string>
+#import <unordered_set>
 
 // Offsets in Isaac engine (arm64 iOS)
 static constexpr uintptr_t kGameGlobalRVA = 0xAC3B90;
@@ -81,7 +82,7 @@ struct ActiveBossData {
         self.userInteractionEnabled = NO;
 
         // 1. Boss Icon
-        _iconView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 26, 26)];
+        _iconView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, 28, 28)];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
         _iconView.layer.magnificationFilter = kCAFilterNearest;
         _iconView.layer.minificationFilter = kCAFilterNearest;
@@ -89,45 +90,45 @@ struct ActiveBossData {
         [self addSubview:_iconView];
 
         // 2. Bar Frame Container
-        CGFloat barX = 30.0;
+        CGFloat barX = 32.0;
         CGFloat barW = frame.size.width - barX;
-        _barContainer = [[UIView alloc] initWithFrame:CGRectMake(barX, 4, barW, 18)];
-        _barContainer.backgroundColor = [UIColor colorWithRed:0.12 green:0.12 blue:0.14 alpha:0.88];
-        _barContainer.layer.borderColor = [UIColor colorWithRed:0.28 green:0.28 blue:0.32 alpha:0.95].CGColor;
+        _barContainer = [[UIView alloc] initWithFrame:CGRectMake(barX, 4, barW, 20)];
+        _barContainer.backgroundColor = [UIColor colorWithRed:0.10 green:0.10 blue:0.12 alpha:0.92];
+        _barContainer.layer.borderColor = [UIColor colorWithRed:0.35 green:0.35 blue:0.40 alpha:0.95].CGColor;
         _barContainer.layer.borderWidth = 1.0;
         _barContainer.layer.cornerRadius = 3.0;
         _barContainer.clipsToBounds = YES;
         _barContainer.userInteractionEnabled = NO;
         [self addSubview:_barContainer];
 
-        // 3. Delayed Damage Flash Fill (yellow/white)
+        // 3. Delayed Damage Flash Fill (yellow/amber)
         _barDamageFill = [[UIView alloc] initWithFrame:_barContainer.bounds];
-        _barDamageFill.backgroundColor = [UIColor colorWithRed:0.95 green:0.85 blue:0.45 alpha:0.8];
+        _barDamageFill.backgroundColor = [UIColor colorWithRed:0.95 green:0.80 blue:0.30 alpha:0.85];
         _barDamageFill.userInteractionEnabled = NO;
         [_barContainer addSubview:_barDamageFill];
 
         // 4. Main HP Fill (crimson / red)
         _barFill = [[UIView alloc] initWithFrame:_barContainer.bounds];
-        _barFill.backgroundColor = [UIColor colorWithRed:0.88 green:0.18 blue:0.22 alpha:0.95];
+        _barFill.backgroundColor = [UIColor colorWithRed:0.88 green:0.16 blue:0.20 alpha:0.95];
         _barFill.userInteractionEnabled = NO;
         [_barContainer addSubview:_barFill];
 
         // 5. Title & HP Percentage Label
         _titleLabel = [[UILabel alloc] initWithFrame:_barContainer.bounds];
         _titleLabel.textColor = UIColor.whiteColor;
-        _titleLabel.font = [UIFont boldSystemFontOfSize:10.0];
+        _titleLabel.font = [UIFont boldSystemFontOfSize:10.5];
         _titleLabel.textAlignment = NSTextAlignmentCenter;
-        _titleLabel.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.9];
+        _titleLabel.shadowColor = [UIColor colorWithWhite:0.0 alpha:0.95];
         _titleLabel.shadowOffset = CGSizeMake(1.0, 1.0);
         _titleLabel.userInteractionEnabled = NO;
         [_barContainer addSubview:_titleLabel];
 
         // 6. Status Effects badge label (Poison, Burn, Freeze, etc.)
-        _statusBadgeLabel = [[UILabel alloc] initWithFrame:CGRectMake(barX, -10, barW, 12)];
-        _statusBadgeLabel.textColor = UIColor.whiteColor;
-        _statusBadgeLabel.font = [UIFont systemFontOfSize:8.5 weight:UIFontWeightMedium];
+        _statusBadgeLabel = [[UILabel alloc] initWithFrame:CGRectMake(barX, -11, barW, 12)];
+        _statusBadgeLabel.textColor = [UIColor colorWithRed:1.0 green:0.95 blue:0.6 alpha:1.0];
+        _statusBadgeLabel.font = [UIFont systemFontOfSize:9.0 weight:UIFontWeightBold];
         _statusBadgeLabel.textAlignment = NSTextAlignmentRight;
-        _statusBadgeLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.8];
+        _statusBadgeLabel.shadowColor = [UIColor colorWithWhite:0 alpha:0.9];
         _statusBadgeLabel.shadowOffset = CGSizeMake(1.0, 1.0);
         _statusBadgeLabel.userInteractionEnabled = NO;
         [self addSubview:_statusBadgeLabel];
@@ -142,21 +143,24 @@ struct ActiveBossData {
     // Load Icon
     NSString *iconRel = [NSString stringWithUTF8String:data.iconRelPath.c_str()];
     UIImage *icon = nil;
-    if (bundle) {
-        NSString *fullPath = [bundle.resourcePath stringByAppendingPathComponent:
-                              [NSString stringWithFormat:@"bosshp_icons/%@", iconRel]];
-        icon = [UIImage imageWithContentsOfFile:fullPath];
-        if (!icon) {
-            fullPath = [bundle.resourcePath stringByAppendingPathComponent:iconRel];
-            icon = [UIImage imageWithContentsOfFile:fullPath];
+
+    NSArray<NSString *> *searchDirs = @[
+        [bundle.resourcePath stringByAppendingPathComponent:@"bosshp_icons"],
+        [bundle.bundlePath stringByAppendingPathComponent:@"bosshp_icons"],
+        bundle.resourcePath ?: @"",
+        bundle.bundlePath ?: @"",
+        [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"bosshp_icons"]
+    ];
+
+    for (NSString *dir in searchDirs) {
+        if (!dir.length) continue;
+        NSString *candidate = [dir stringByAppendingPathComponent:iconRel];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
+            icon = [UIImage imageWithContentsOfFile:candidate];
+            if (icon) break;
         }
     }
-    if (!icon) {
-        // Fallback search in app bundle
-        NSString *fullPath = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:
-                              [NSString stringWithFormat:@"bosshp_icons/%@", iconRel]];
-        icon = [UIImage imageWithContentsOfFile:fullPath];
-    }
+
     _iconView.image = icon;
 
     // Smooth HP animation
@@ -164,11 +168,11 @@ struct ActiveBossData {
     CGFloat totalW = _barContainer.bounds.size.width;
     CGFloat targetW = totalW * ratio;
 
-    [UIView animateWithDuration:0.15 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+    [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
         self.barFill.frame = CGRectMake(0, 0, targetW, self.barContainer.bounds.size.height);
     } completion:nil];
 
-    [UIView animateWithDuration:0.45 delay:0.1 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+    [UIView animateWithDuration:0.40 delay:0.08 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         self.barDamageFill.frame = CGRectMake(0, 0, targetW, self.barContainer.bounds.size.height);
     } completion:nil];
 
@@ -189,7 +193,7 @@ struct ActiveBossData {
     if (data.flags & FLAG_FEAR) [statusBadges addObject:@"👻 Fear"];
 
     if (statusBadges.count > 0) {
-        _statusBadgeLabel.text = [statusBadges componentsJoinedByString:@" "];
+        _statusBadgeLabel.text = [statusBadges componentsJoinedByString:@"  "];
         _statusBadgeLabel.hidden = NO;
     } else {
         _statusBadgeLabel.hidden = YES;
@@ -204,9 +208,10 @@ struct ActiveBossData {
 @property (nonatomic, strong) BossBarPassthroughView *rootView;
 @property (nonatomic, strong) UIView *containerView;
 @property (nonatomic, strong) NSMutableArray<SingleBossBarView *> *barViews;
-@property (nonatomic, strong) CADisplayLink *displayLink;
+@property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic, assign) uintptr_t baseAddress;
 @property (nonatomic, strong) NSBundle *modBundle;
+@property (nonatomic, assign) BOOL loggedFirstDetection;
 
 @end
 
@@ -241,13 +246,20 @@ struct ActiveBossData {
             if (!fallback) fallback = window;
         }
     }
+    if (!fallback) {
+        fallback = UIApplication.sharedApplication.keyWindow;
+    }
     return fallback;
 }
 
 - (void)setupOverlayIfNeeded {
     UIWindow *window = [self findGameWindow];
     if (!window || CGRectIsEmpty(window.bounds)) return;
-    if (self.rootView.superview == window) return;
+
+    if (self.rootView && self.rootView.superview == window) {
+        [window bringSubviewToFront:self.rootView];
+        return;
+    }
 
     [self.rootView removeFromSuperview];
 
@@ -255,8 +267,9 @@ struct ActiveBossData {
     self.rootView.backgroundColor = UIColor.clearColor;
     self.rootView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.rootView.userInteractionEnabled = NO;
+    self.rootView.layer.zPosition = 9999.0f;
 
-    CGFloat barW = 280.0;
+    CGFloat barW = 300.0;
     CGFloat barH = 34.0;
     CGFloat maxW = MIN(barW, window.bounds.size.width - 40.0);
     CGFloat bottomInset = 16.0;
@@ -275,34 +288,43 @@ struct ActiveBossData {
                                           UIViewAutoresizingFlexibleTopMargin;
     [self.rootView addSubview:self.containerView];
     [window addSubview:self.rootView];
+    [window bringSubviewToFront:self.rootView];
 
-    BossBarLog(@"Attached Enhanced Boss Bars overlay to game window (frame: %@)", NSStringFromCGRect(window.bounds));
+    BossBarLog(@"[OVERLAY] Attached Enhanced Boss Bars overlay to window (bounds: %@, zPosition: 9999)",
+               NSStringFromCGRect(window.bounds));
 }
 
 - (void)start {
-    BossBarLog(@"Starting Enhanced Boss Bars controller...");
-    [self setupOverlayIfNeeded];
+    BossBarLog(@"[CONTROLLER] Starting Enhanced Boss Bars controller...");
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self setupOverlayIfNeeded];
 
-    if (!self.displayLink) {
-        self.displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
-        if (@available(iOS 15.0, *)) {
-            self.displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 60, 60);
+        if (!self.timer) {
+            self.timer = [NSTimer scheduledTimerWithTimeInterval:0.05
+                                                          target:self
+                                                        selector:@selector(tick:)
+                                                        userInfo:nil
+                                                         repeats:YES];
+            [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+            BossBarLog(@"[CONTROLLER] NSTimer scheduled on main runloop (0.05s / 20 Hz)");
         }
-        [self.displayLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
-    }
+    });
 }
 
 - (void)stop {
-    [self.displayLink invalidate];
-    self.displayLink = nil;
+    [self.timer invalidate];
+    self.timer = nil;
     [self.rootView removeFromSuperview];
     self.rootView = nil;
 }
 
-- (void)tick:(CADisplayLink *)link {
+- (void)tick:(NSTimer *)timer {
+    (void)timer;
+
     if (!self.baseAddress) {
         self.baseAddress = BossBarGetBaseAddress();
         if (!self.baseAddress) return;
+        BossBarLog(@"[CONTROLLER] Resolved Isaac base address: 0x%lx", (unsigned long)self.baseAddress);
     }
 
     [self setupOverlayIfNeeded];
@@ -339,10 +361,12 @@ struct ActiveBossData {
     }
 
     std::vector<ActiveBossData> activeBosses;
+    std::unordered_set<uintptr_t> seenEntities;
 
     for (int32_t i = 0; i < count; ++i) {
         uintptr_t entity = 0;
         if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), entity) || !entity) continue;
+        if (seenEntities.count(entity)) continue;
 
         uint8_t isDead = 0;
         SafeRead(entity + kEntityIsDeadOffset, isDead);
@@ -360,10 +384,30 @@ struct ActiveBossData {
         float maxHp = 0.0f;
         if (!SafeRead(entity + kEntityHPOffset, hp) || hp <= 0.0f) continue;
         SafeRead(entity + kEntityMaxHPOffset, maxHp);
+        if (maxHp <= 0.0f) continue;
 
         const BossBarInfo *info = FindBossInfo(type, variant);
-        // Eligible if in database OR in a boss room with significant HP
-        if (info || (roomType == 5 && maxHp >= 80.0f)) {
+
+        // Eligible if in database OR in a boss room (roomType == 5) with significant HP
+        if (info || (roomType == 5 && maxHp >= 40.0f)) {
+            // Deduplicate multi-part / subsidiary entities of the same boss type (e.g. Mom foot vs doors/eyes)
+            bool foundExistingType = false;
+            for (auto &existing : activeBosses) {
+                if (existing.type == type) {
+                    foundExistingType = true;
+                    // If current entity has larger maxHP (e.g. main body vs appendage), adopt it
+                    if (maxHp > existing.maxHP) {
+                        existing.entityPtr = entity;
+                        existing.variant = variant;
+                        existing.currentHP = hp;
+                        existing.maxHP = maxHp;
+                        SafeRead(entity + kEntityFlagsOffset, existing.flags);
+                    }
+                    break;
+                }
+            }
+            if (foundExistingType) continue;
+
             ActiveBossData b;
             b.entityPtr = entity;
             b.type = type;
@@ -377,12 +421,21 @@ struct ActiveBossData {
             SafeRead(entity + kEntityFlagsOffset, flags);
             b.flags = flags;
 
+            seenEntities.insert(entity);
             activeBosses.push_back(b);
+
+            if (!self.loggedFirstDetection) {
+                BossBarLog(@"[BOSS DETECTED] %s (Type: %d, Variant: %d, HP: %.1f/%.1f)",
+                           b.name.c_str(), type, variant, hp, maxHp);
+                self.loggedFirstDetection = YES;
+            }
+
             if (activeBosses.size() >= 4) break; // Limit to 4 bars max
         }
     }
 
     if (activeBosses.empty()) {
+        self.loggedFirstDetection = NO;
         [self setOverlayVisible:NO];
         return;
     }
@@ -394,18 +447,17 @@ struct ActiveBossData {
 - (void)setOverlayVisible:(BOOL)visible {
     if ((self.containerView.alpha > 0.0) == visible) return;
 
-    [UIView animateWithDuration:0.25 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
+    [UIView animateWithDuration:0.22 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         self.containerView.alpha = visible ? 1.0 : 0.0;
     } completion:nil];
 }
 
 - (void)updateBarsWithBosses:(const std::vector<ActiveBossData> &)bosses {
-    CGFloat barH = 30.0;
+    CGFloat barH = 32.0;
     CGFloat spacing = 6.0;
     CGFloat totalH = bosses.size() * barH + (bosses.size() - 1) * spacing;
 
-    UIWindow *window = self.rootView.window;
-    if (!window) window = [self findGameWindow];
+    UIWindow *window = self.rootView.window ?: [self findGameWindow];
     CGFloat bottomInset = 16.0;
     if (@available(iOS 11.0, *)) {
         if (window) bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 8.0);

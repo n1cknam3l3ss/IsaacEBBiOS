@@ -72,6 +72,7 @@ inline const std::unordered_map<int64_t, BossBarInfo>& GetBossDefinitions() {
         { ((int64_t)413 << 16) | 0, { 413, 0, "The Matriarch", "chapter4/the_matriarch.png", {} } },
         { ((int64_t)43 << 16) | 0, { 43, 0, "Monstro II", "chapter3/monstro_two.png", {"_red"} } },
         { ((int64_t)43 << 16) | 1, { 43, 1, "Gish", "chapter3/gish.png", {} } },
+        { ((int64_t)45 << 16) | 0, { 45, 0, "Mom", "final/mom.png", {"_blue", "_red"} } },
         { ((int64_t)45 << 16) | 10, { 45, 10, "Mom", "final/mom.png", {"_blue", "_red"} } },
         { ((int64_t)46 << 16) | 0, { 46, 0, "Sloth", "minibosses/sloth.png", {} } },
         { ((int64_t)46 << 16) | 1, { 46, 1, "Super Sloth", "minibosses/super_sloth.png", {} } },
@@ -180,11 +181,26 @@ inline const std::unordered_map<int64_t, BossBarInfo>& GetBossDefinitions() {
 
 inline const BossBarInfo* FindBossInfo(int32_t type, int32_t variant) {
     const auto& map = GetBossDefinitions();
+    // 1. Exact match (type, variant)
     int64_t key = ((int64_t)type << 16) | variant;
     auto it = map.find(key);
     if (it != map.end()) return &it->second;
+
+    // 2. Check variant 0 fallback
     key = ((int64_t)type << 16) | 0;
     it = map.find(key);
     if (it != map.end()) return &it->second;
+
+    // 3. Check variant 10 fallback (common in Isaac for multi-phase/stomp bosses)
+    key = ((int64_t)type << 16) | 10;
+    it = map.find(key);
+    if (it != map.end()) return &it->second;
+
+    // 4. Fallback search by entity type
+    for (const auto& pair : map) {
+        if (pair.second.type == type) {
+            return &pair.second;
+        }
+    }
     return nullptr;
 }
