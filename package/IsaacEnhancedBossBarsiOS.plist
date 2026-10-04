@@ -1,0 +1,9 @@
+{
+    Filter = {
+        Bundles = (
+            "com.Nicalis.Isaac-iOS",
+            "com.nicalis.isaac",
+            "com.kdt.livecontainer"
+        );
+    };
+}

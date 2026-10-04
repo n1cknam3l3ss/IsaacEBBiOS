@@ -1,0 +1,70 @@
+name: Build and Release
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          if ! command -v dpkg-deb >/dev/null 2>&1; then brew install dpkg; fi
+
+      - name: Build Tweak
+        run: make all
+
+      - name: Verify outputs
+        run: |
+          test -f build/IsaacEnhancedBossBarsiOS.dylib
+          test -f packages/IsaacEnhancedBossBarsiOS-rootless.deb
+          test -f packages/IsaacEnhancedBossBarsiOS-LiveContainer.framework.zip
+          test -f dist/IsaacEnhancedBossBarsiOS.zip
+          otool -L build/IsaacEnhancedBossBarsiOS.dylib
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: IsaacEnhancedBossBarsiOS-Build
+          path: |
+            build/IsaacEnhancedBossBarsiOS.dylib
+            packages/IsaacEnhancedBossBarsiOS-rootless.deb
+            packages/IsaacEnhancedBossBarsiOS-LiveContainer.framework.zip
+            dist/IsaacEnhancedBossBarsiOS.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: "Isaac Enhanced Boss Bars iOS v1.0.0"
+          body: |
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.0)
+
+            Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
+
+            ### Features:
+            - **Custom Boss Health Bars**: Replaces the vanilla health bar with stylish, animated boss bars.
+            - **Pixel-Art Boss Portraits**: Includes crisp, authentic boss portraits for over 160+ bosses and champion variants.
+            - **Live Status Effect Indicators**: Live badges for Poison (☠), Burn (🔥), Freeze (❄), Slow (⏱), Charm (💖), and Fear (👻).
+            - **Multi-Boss Support**: Stacks health bars cleanly during multi-boss and Double Trouble encounters.
+            - **Smooth 60/120 FPS Performance**: Built natively with UIKit and CoreAnimation, zero gameplay lag and zero touch interference.
+
+            ### Installation:
+            - **LiveContainer / Jailed**:
+              Download `IsaacEnhancedBossBarsiOS-LiveContainer.framework.zip`, open LiveContainer, select your Isaac app, tap **Tweaks** -> **+** and choose the downloaded file.
+            - **Jailbreak (Dopamine / Sileo / ElleKit)**:
+              Install `IsaacEnhancedBossBarsiOS-rootless.deb`.
+          files: |
+            build/IsaacEnhancedBossBarsiOS.dylib
+            packages/IsaacEnhancedBossBarsiOS-rootless.deb
+            packages/IsaacEnhancedBossBarsiOS-LiveContainer.framework.zip
+            dist/IsaacEnhancedBossBarsiOS.zip
