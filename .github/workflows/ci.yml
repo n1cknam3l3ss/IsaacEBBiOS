@@ -44,19 +44,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.4
-          name: "Isaac Enhanced Boss Bars iOS v1.0.4"
+          tag_name: v1.0.5
+          name: "Isaac Enhanced Boss Bars iOS v1.0.5"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.4)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.5)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.0.4:
-            - **Automatic Vanilla Bar Suppression**: The tweak now automatically replaces vanilla health bar textures directly in the game bundle on launch! No manual file copying or re-transfer of the app required.
-            - **Animated Dogma Static**: Dogma's HP bar and TV portrait now actively flicker with authentic animated TV static! Dogma Angel wings are properly sliced and animated.
-            - **Ultra Harbingers & Beast Room**: Full support for Ultra Famine, Ultra Pestilence, Ultra War, and Ultra Death during the Beast fight without getting overshadowed by The Beast.
-            - **Seamless Boss Portrait Layout**: Eliminated the gap between boss portrait and health bar frame, connecting them into a single unified graphic.
-            - **Live Status Effect Badges**: Corrected Isaac Repentance entity status flags — Poison droplet, Burn flame, Freeze snowflake, Charm, Slow, and Fear now render clearly to the left of the boss portrait.
+            ### What's New in v1.0.5:
+            - **Beast Arena Background Entity Fix**: Filtered out Isaac's background silhouette entities (`Variants 100..104` and sub-parts `2, 3, 11, etc.`), eliminating duplicate stacked Beast bars.
+            - **Sequential Beast Fight Support**: During the entire Beast encounter, exactly one active boss bar is displayed at a time (Ultra Famine -> Ultra Pestilence -> Ultra War -> Ultra Death -> The Beast) featuring the authentic volcanic Beast bar style and fire overlay.
+            - **Dogma Phase 1 HP Tracking**: Fixed invulnerability bug by correctly targeting Dogma's TV (`Variant 1`) instead of the cord baby (`Variant 0`), allowing Phase 1 HP to properly drain as damage is dealt.
+            - **Dogma Phase 2 Angel Wings Icon**: Fixed icon animation update so Dogma Phase 2 cleanly transitions to the animated winged angel portrait instead of stretching the TV frame.
+            - **Accurate Entity Status Bitmask**: Corrected entity status flags offset to `0x560` (Isaac arm64 engine address), eliminating spurious charm heart badges and accurately displaying poison, burn, freeze, and slow effects.
 
             ### Installation:
             - **LiveContainer / Jailed**:

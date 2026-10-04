@@ -21,7 +21,7 @@ static constexpr size_t kRoomEntitiesCountOffset = 0x19D4;
 static constexpr size_t kEntityTypeOffset = 0x38;
 static constexpr size_t kEntityVariantOffset = 0x3C;
 static constexpr size_t kEntitySubTypeOffset = 0x40;
-static constexpr size_t kEntityFlagsOffset = 0x198;
+static constexpr size_t kEntityFlagsOffset = 0x560;
 static constexpr size_t kEntityIsDeadOffset = 0x1C3;
 static constexpr size_t kEntityHPOffset = 0x354;
 static constexpr size_t kEntityMaxHPOffset = 0x358;
@@ -450,7 +450,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
         // Animated TV static for Dogma bar fill
         if (entry.fillAnimationImages.count > 1) {
-            if (!_fillImageView.isAnimating) {
+            if (![_fillImageView.animationImages isEqualToArray:entry.fillAnimationImages]) {
                 _fillImageView.animationImages = entry.fillAnimationImages;
                 _fillImageView.animationDuration = 0.25;
                 [_fillImageView startAnimating];
@@ -478,7 +478,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         }
 
         if (iconEntry.animationImages.count > 1) {
-            if (!_iconView.isAnimating) {
+            if (![_iconView.animationImages isEqualToArray:iconEntry.animationImages]) {
                 _iconView.animationImages = iconEntry.animationImages;
                 _iconView.animationDuration = 0.25;
                 [_iconView startAnimating];
@@ -705,8 +705,10 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         return;
     }
 
-    // 1. Check if any Ultra Harbinger is present and actively alive during the Beast fight
-    bool hasActiveHarbinger = false;
+    // 1. Analyze room for special multi-phase bosses (Harbingers/Beast, Dogma)
+    int32_t activeHarbingerVariant = -1;
+    bool hasDogmaPhase2 = false;
+
     for (int32_t i = 0; i < count; ++i) {
         uintptr_t entity = 0;
         if (!SafeRead(entitiesArrayPtr + i * sizeof(uintptr_t), entity) || !entity) continue;
@@ -716,12 +718,22 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         int32_t type = 0, variant = 0;
         if (!SafeRead(entity + kEntityTypeOffset, type)) continue;
         SafeRead(entity + kEntityVariantOffset, variant);
+
         if (type == 951 && (variant == 10 || variant == 20 || variant == 30 || variant == 40)) {
             float hp = 0.0f;
             SafeRead(entity + kEntityHPOffset, hp);
             if (hp > 0.0f) {
-                hasActiveHarbinger = true;
-                break;
+                // If multiple Harbingers exist during transitions, prioritize higher variant
+                if (variant > activeHarbingerVariant) {
+                    activeHarbingerVariant = variant;
+                }
+            }
+        }
+        if (type == 950 && variant == 2) {
+            float hp = 0.0f;
+            SafeRead(entity + kEntityHPOffset, hp);
+            if (hp > 0.0f) {
+                hasDogmaPhase2 = true;
             }
         }
     }
@@ -746,9 +758,27 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         // Filter: only boss NPCs (type >= 10 && < 1000)
         if (type < 10 || type >= 1000) continue;
 
-        // Skip dormant Beast (Variant 0) while Ultra Harbingers are still being fought
-        if (type == 951 && variant == 0 && hasActiveHarbinger) {
-            continue;
+        // Dogma (Type 950):
+        if (type == 950) {
+            // Ignore invulnerable cord/baby (Variant 0) and any helper entities
+            if (variant != 1 && variant != 2) continue;
+            // When Phase 2 (Angel) is active, skip destroyed TV (Variant 1)
+            if (variant == 1 && hasDogmaPhase2) continue;
+        }
+
+        // The Beast & Ultra Harbingers (Type 951):
+        if (type == 951) {
+            // Strictly ignore background silhouettes (100..104) and sub-parts (2, 3, 11, etc.)
+            if (variant != 0 && variant != 10 && variant != 20 && variant != 30 && variant != 40) {
+                continue;
+            }
+            if (activeHarbingerVariant > 0) {
+                // Harbingers are active: ONLY accept the active Harbinger
+                if (variant != activeHarbingerVariant) continue;
+            } else {
+                // All Harbingers defeated: ONLY accept The Beast itself
+                if (variant != 0) continue;
+            }
         }
 
         float hp = 0.0f;
@@ -762,20 +792,49 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         // Eligible if in database OR in a boss room with significant HP
         if (info || (roomType == 5 && maxHp >= 40.0f)) {
             // Deduplicate multi-part / subsidiary entities of the same boss
-            // For Type 951 (Harbingers & Beast), variants are distinct bosses
+            // For Type 951, the entire sequence is treated as ONE boss bar
             bool foundExisting = false;
             for (auto &existing : activeBosses) {
-                bool isSameBoss = (type == 951) ? (existing.type == type && existing.variant == variant)
-                                                : (existing.type == type);
+                bool isSameBoss = (existing.type == type);
                 if (isSameBoss) {
                     foundExisting = true;
-                    // Adopt main body with highest maxHP
-                    if (maxHp > existing.maxHP) {
+                    // Determine if current entity should take precedence over existing
+                    bool shouldReplace = false;
+                    if (type == 950) {
+                        // Dogma Phase 2 (Angel) always replaces Phase 1 (TV)
+                        if (variant == 2 && existing.variant == 1) {
+                            shouldReplace = true;
+                        } else if (variant == existing.variant && maxHp > existing.maxHP) {
+                            shouldReplace = true;
+                        }
+                    } else if (type == 951) {
+                        // Beast sequence: replace previous harbinger / phase
+                        if (variant != existing.variant) {
+                            shouldReplace = true;
+                        } else if (maxHp > existing.maxHP) {
+                            shouldReplace = true;
+                        }
+                    } else if (variant != existing.variant && variant > existing.variant) {
+                        // Multi-phase bosses where Phase 2 has a higher variant (e.g. Mother, Satan)
+                        shouldReplace = true;
+                    } else if (maxHp > existing.maxHP) {
+                        shouldReplace = true;
+                    }
+
+                    if (shouldReplace) {
                         existing.entityPtr = entity;
                         existing.variant = variant;
                         existing.currentHP = hp;
                         existing.maxHP = maxHp;
                         SafeRead(entity + kEntityFlagsOffset, existing.flags);
+                        if (info) {
+                            existing.name = info->name;
+                            existing.iconRelPath = info->iconRelPath;
+                            BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+                            existing.barRelPath = style.barRelPath;
+                            existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+                            existing.isDefaultTint = style.isDefaultTint;
+                        }
                     }
                     break;
                 }

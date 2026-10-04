@@ -221,14 +221,13 @@ inline const std::unordered_map<int64_t, BossBarInfo>& GetBossDefinitions() {
         { ((int64_t)920 << 16) | 0, { 920, 0, "Horny Boys", "altpath/horny_boys.png", nullptr, {} } },
         { ((int64_t)921 << 16) | 0, { 921, 0, "Clutch", "altpath/clutch.png", nullptr, {} } },
         { ((int64_t)922 << 16) | 0, { 922, 0, "Cadavra", "unused/cadavra.png", nullptr, {} } },
-        { ((int64_t)950 << 16) | 0, { 950, 0, "Dogma", "final/dogma_tv.png", "Dogma", {} } },
-        { ((int64_t)950 << 16) | 1, { 950, 1, "Dogma Tv", "final/dogma_tv.png", "Dogma", {} } },
+        { ((int64_t)950 << 16) | 1, { 950, 1, "Dogma TV", "final/dogma_tv.png", "Dogma", {} } },
         { ((int64_t)950 << 16) | 2, { 950, 2, "Dogma Angel", "final/dogma_phase2.png", "Dogma", {} } },
         { ((int64_t)951 << 16) | 0, { 951, 0, "The Beast", "final/beast.png", "Beast", {} } },
-        { ((int64_t)951 << 16) | 10, { 951, 10, "Ultra Famine", "final/ultra_famine.png", nullptr, {} } },
-        { ((int64_t)951 << 16) | 20, { 951, 20, "Ultra Pestilence", "final/ultra_pestilence.png", nullptr, {} } },
-        { ((int64_t)951 << 16) | 30, { 951, 30, "Ultra War", "final/ultra_war.png", nullptr, {} } },
-        { ((int64_t)951 << 16) | 40, { 951, 40, "Ultra Death", "final/ultra_death.png", nullptr, {} } },
+        { ((int64_t)951 << 16) | 10, { 951, 10, "Ultra Famine", "final/ultra_famine.png", "Beast", {} } },
+        { ((int64_t)951 << 16) | 20, { 951, 20, "Ultra Pestilence", "final/ultra_pestilence.png", "Beast", {} } },
+        { ((int64_t)951 << 16) | 30, { 951, 30, "Ultra War", "final/ultra_war.png", "Beast", {} } },
+        { ((int64_t)951 << 16) | 40, { 951, 40, "Ultra Death", "final/ultra_death.png", "Beast", {} } },
     };
     return kBossDefs;
 }
@@ -239,6 +238,11 @@ inline const BossBarInfo* FindBossInfo(int32_t type, int32_t variant) {
     int64_t key = ((int64_t)type << 16) | variant;
     auto it = map.find(key);
     if (it != map.end()) return &it->second;
+
+    // Never fallback for multi-variant bosses (Dogma, Beast, etc.)
+    if (type == 950 || type == 951) {
+        return nullptr;
+    }
 
     // 2. Check variant 0 fallback
     key = ((int64_t)type << 16) | 0;
