@@ -17,6 +17,7 @@ RELEASE_ZIP := $(DIST)/IsaacEnhancedBossBarsiOS.zip
 SOURCES := \
 	$(PROJECT_ROOT)/src/BossBarBootstrap.mm \
 	$(PROJECT_ROOT)/src/BossBarLogger.mm \
+	$(PROJECT_ROOT)/src/BossBarDebugServer.mm \
 	$(PROJECT_ROOT)/src/BossBarController.mm
 
 .PHONY: all dylib package livecontainer dist clean

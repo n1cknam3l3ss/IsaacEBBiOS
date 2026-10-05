@@ -2,12 +2,14 @@
 #import <UIKit/UIKit.h>
 #import "BossBarController.h"
 #import "BossBarLogger.h"
+#import "BossBarDebugServer.h"
 
 static dispatch_once_t gBossBarStartOnce;
 
 static void BossBarStart(void) {
     dispatch_once(&gBossBarStartOnce, ^{
         BossBarLog(@"[BOOTSTRAP] Executing BossBarStart on main thread...");
+        BossBarDebugServerStart();
         [[BossBarController sharedInstance] start];
     });
 }

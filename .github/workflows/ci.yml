@@ -48,20 +48,18 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.8
-          name: "Isaac Enhanced Boss Bars iOS v1.0.8"
+          tag_name: v1.0.9
+          name: "Isaac Enhanced Boss Bars iOS v1.0.9"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.8)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.9)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.0.8:
-            - **Strict Boss Room Filtering**: Boss bars are now exclusively displayed in rooms that host boss encounters (Boss rooms, Boss Rush, Mini-boss rooms, Challenge rooms). Regular exploration rooms (spiders, mulligans, wandering mobs) no longer render any boss bars.
-            - **Segmented Worm Boss HP Merging**: Segmented bosses like Larry Jr, Chub, Chad, Carrion Queen, Pin, Scolex, Frail, Wormwood, and Turdlet now automatically sum the HP and MaxHP of all their body/tail segments into a single unified health bar instead of cluttering the screen with 4-8 separate bars.
-            - **Gemini & Blighted Ovum Fixes**: Eliminated duplicate health bars caused by Gemini's umbilical cord tether segments. Filtered out Blighted Ovum's invincible ghost baby.
-            - **Non-Boss Helper & Projectile Filtering**: Prevented Little Horn black hole spheres and Big Horn sub-entities from generating boss bars.
-            - **Disabled Broken Status Effect Badges**: Removed the static row of fake status badges (poison, freeze, charm, etc.) caused by unverified bitfield offsets.
-            - **Exact (Type, Variant) Matching**: Removed loose fallback matching in boss definitions to ensure only genuine bosses get custom bars.
+            ### What's New in v1.0.9:
+            - **Live Wi-Fi Debug Server (port 8765)**: Integrated embedded wireless HTTP server on `http://<device_ip>:8765` providing real-time JSON snapshots (`/status`) and event stream (`/log`) of all boss memory fields (`0x560`, `0x1B8`, memory chunks).
+            - **Live HUD Banner**: Added on-screen live banner above the boss bars showing the device's local Wi-Fi IP and active `0x560` bitmask in real time.
+            - **Live Status Effect Badges for Verified Bits**: Status badges (Poison, Burn, Slow, Charm, Confusion, Fear, Bleed out) now trigger based on verified ARM64 engine bit positions (6, 12, 7, 8, 9, 11, 34).
+            - **All v1.0.8 Fixes Retained**: Boss room filtering, segmented worm boss unification, Gemini & Blighted Ovum deduplication, and Chest/Dark Room support.
 
             ### Installation:
             - **LiveContainer / Jailed**:

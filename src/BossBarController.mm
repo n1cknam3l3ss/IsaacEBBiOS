@@ -2,6 +2,7 @@
 #import "BossBarData.h"
 #import "BossBarMemory.h"
 #import "BossBarLogger.h"
+#import "BossBarDebugServer.h"
 
 #import <QuartzCore/QuartzCore.h>
 #import <vector>
@@ -542,12 +543,53 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         self.fillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, self.barH);
     } completion:nil];
 
-    // 4. Status Effect Badges (disabled until exact status bitfield offset is verified)
-    _statusContainer.hidden = YES;
-    for (UIImageView *iv in _statusIcons) {
-        [iv removeFromSuperview];
+    // 4. Status Effect Badges (verified ARM64 engine bitshifts)
+    std::vector<int> activeStatusIndices;
+    if (data.flags & (1ULL << 6))  activeStatusIndices.push_back(5);  // Poison (Green droplet)
+    if (data.flags & (1ULL << 12)) activeStatusIndices.push_back(0);  // Burn (Orange flame)
+    if (data.flags & (1ULL << 7))  activeStatusIndices.push_back(6);  // Slow (Snail)
+    if (data.flags & (1ULL << 8))  activeStatusIndices.push_back(1);  // Charm (Pink heart)
+    if (data.flags & (1ULL << 9))  activeStatusIndices.push_back(2);  // Confusion (Stars)
+    if (data.flags & (1ULL << 11)) activeStatusIndices.push_back(3);  // Fear (Purple face)
+    if (data.flags & (1ULL << 34)) activeStatusIndices.push_back(9);  // Bleed out (Blood droplet)
+
+    if (activeStatusIndices.empty()) {
+        _statusContainer.hidden = YES;
+        for (UIImageView *iv in _statusIcons) {
+            [iv removeFromSuperview];
+        }
+        [_statusIcons removeAllObjects];
+    } else {
+        _statusContainer.hidden = NO;
+        CGFloat badgeSize = 14.0 * _pixelScale;
+        CGFloat badgeSpacing = 2.0 * _pixelScale;
+        CGFloat startX = 22.0 * _pixelScale;
+
+        while (_statusIcons.count < activeStatusIndices.size()) {
+            UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectZero];
+            iv.contentMode = UIViewContentModeScaleAspectFit;
+            iv.layer.magnificationFilter = kCAFilterNearest;
+            iv.layer.minificationFilter = kCAFilterNearest;
+            iv.layer.shadowColor = UIColor.blackColor.CGColor;
+            iv.layer.shadowOpacity = 0.85;
+            iv.layer.shadowRadius = 1.0;
+            iv.layer.shadowOffset = CGSizeMake(0, 1.0);
+            [_statusContainer addSubview:iv];
+            [_statusIcons addObject:iv];
+        }
+        while (_statusIcons.count > activeStatusIndices.size()) {
+            UIImageView *last = [_statusIcons lastObject];
+            [last removeFromSuperview];
+            [_statusIcons removeLastObject];
+        }
+
+        for (size_t i = 0; i < activeStatusIndices.size(); ++i) {
+            UIImageView *iv = _statusIcons[i];
+            iv.image = [cache statusIconForIndex:activeStatusIndices[i] bundle:bundle];
+            iv.frame = CGRectMake(startX + i * (badgeSize + badgeSpacing), 0, badgeSize, badgeSize);
+        }
+        [self bringSubviewToFront:_statusContainer];
     }
-    [_statusIcons removeAllObjects];
 }
 
 @end
@@ -563,6 +605,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 @property (nonatomic, assign) uintptr_t baseAddress;
 @property (nonatomic, strong) NSBundle *modBundle;
 @property (nonatomic, assign) BOOL loggedFirstDetection;
+@property (nonatomic, strong) UILabel *debugLabel;
 
 @end
 
@@ -1020,6 +1063,25 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
     [self updateBarsWithBosses:activeBosses];
     [self setOverlayVisible:YES];
+
+    // Push live state to background Wi-Fi debug server
+    std::vector<BossDebugInfo> dbgBosses;
+    for (const auto &b : activeBosses) {
+        BossDebugInfo d;
+        d.entityPtr = b.entityPtr;
+        d.type = b.type;
+        d.variant = b.variant;
+        d.name = b.name;
+        d.currentHP = b.currentHP;
+        d.maxHP = b.maxHP;
+        d.flags560 = b.flags;
+        d.flags1b8 = 0;
+        SafeRead(b.entityPtr + 0x1B8, d.flags1b8);
+        memset(d.memoryChunk540, 0, sizeof(d.memoryChunk540));
+        SafeReadBytes(b.entityPtr + 0x540, d.memoryChunk540, sizeof(d.memoryChunk540));
+        dbgBosses.push_back(d);
+    }
+    BossBarDebugServerUpdate(dbgBosses, stage, roomType);
 }
 
 - (void)setOverlayVisible:(BOOL)visible {
@@ -1027,6 +1089,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
     [UIView animateWithDuration:0.20 delay:0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         self.containerView.alpha = visible ? 1.0 : 0.0;
+        self.debugLabel.alpha = visible ? 1.0 : 0.0;
     } completion:nil];
 }
 
@@ -1086,6 +1149,42 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         CGFloat x = i * (barW + spacing);
         view.frame = CGRectMake(x, 0, barW, barH);
         [view updateWithData:bosses[i] bundle:self.modBundle];
+    }
+
+    // Live Debug Banner (Wi-Fi server address + active status bits)
+    if (!_debugLabel) {
+        _debugLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _debugLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.95];
+        _debugLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65];
+        _debugLabel.font = [UIFont fontWithName:@"Courier-Bold" size:11.0] ?: [UIFont boldSystemFontOfSize:11.0];
+        _debugLabel.textAlignment = NSTextAlignmentCenter;
+        _debugLabel.layer.cornerRadius = 4.0;
+        _debugLabel.layer.masksToBounds = YES;
+        _debugLabel.numberOfLines = 1;
+        [self.rootView addSubview:_debugLabel];
+    }
+
+    NSString *ip = BossBarDebugServerGetLocalIP();
+    if (count > 0) {
+        const auto &b0 = bosses[0];
+        NSMutableString *bits = [NSMutableString string];
+        for (int bit = 0; bit < 64; ++bit) {
+            if (b0.flags & (1ULL << bit)) {
+                if (bits.length > 0) [bits appendString:@","];
+                [bits appendFormat:@"%d", bit];
+            }
+        }
+        _debugLabel.text = [NSString stringWithFormat:@"📡 http://%@:8765 | 0x560: 0x%016llX [%@]",
+                            ip, (unsigned long long)b0.flags, bits.length > 0 ? bits : @"clean"];
+        _debugLabel.hidden = NO;
+        CGFloat lblW = MIN(window.bounds.size.width - 20.0, 420.0);
+        CGFloat lblH = 18.0;
+        CGFloat lblX = (window.bounds.size.width - lblW) / 2.0;
+        CGFloat lblY = newFrame.origin.y - lblH - 6.0;
+        _debugLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
+        [self.rootView bringSubviewToFront:_debugLabel];
+    } else {
+        _debugLabel.hidden = YES;
     }
 }
 
