@@ -48,18 +48,17 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.9
-          name: "Isaac Enhanced Boss Bars iOS v1.0.9"
+          tag_name: v1.1.0
+          name: "Isaac Enhanced Boss Bars iOS v1.1.0"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.9)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.1.0)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.0.9:
-            - **Live Wi-Fi Debug Server (port 8765)**: Integrated embedded wireless HTTP server on `http://<device_ip>:8765` providing real-time JSON snapshots (`/status`) and event stream (`/log`) of all boss memory fields (`0x560`, `0x1B8`, memory chunks).
-            - **Live HUD Banner**: Added on-screen live banner above the boss bars showing the device's local Wi-Fi IP and active `0x560` bitmask in real time.
-            - **Live Status Effect Badges for Verified Bits**: Status badges (Poison, Burn, Slow, Charm, Confusion, Fear, Bleed out) now trigger based on verified ARM64 engine bit positions (6, 12, 7, 8, 9, 11, 34).
-            - **All v1.0.8 Fixes Retained**: Boss room filtering, segmented worm boss unification, Gemini & Blighted Ovum deduplication, and Chest/Dark Room support.
+            ### What's New in v1.1.0:
+            - **Accurate Native Status Effect Badges**: Full live status effect indicators (Burn, Charm, Confusion, Fear, Freeze/Petrify, Poison, Slow, Bleed Out, Baited, Weakness) mapped to verified ARM64 engine bit positions at entity offset `0x1B8`. Every badge appears directly above the boss health bar and disappears as soon as the effect expires.
+            - **Clean Immersive HUD**: Removed temporary on-screen Wi-Fi banner for a clean, authentic, pixel-perfect boss bar interface.
+            - **All Boss Logic Retained**: Boss room restriction, segmented worm HP merging (Larry Jr, Chub, Pin), Gemini/Blighted Ovum deduplication, and Chest / Dark Room compatibility.
 
             ### Installation:
             - **LiveContainer / Jailed**:

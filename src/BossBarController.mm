@@ -27,7 +27,7 @@ static constexpr size_t kGameCutsceneEventOffset = 0x21560;
 static constexpr size_t kEntityTypeOffset = 0x38;
 static constexpr size_t kEntityVariantOffset = 0x3C;
 static constexpr size_t kEntitySubTypeOffset = 0x40;
-static constexpr size_t kEntityFlagsOffset = 0x560;
+static constexpr size_t kEntityFlagsOffset = 0x1B8;
 static constexpr size_t kEntityIsDeadOffset = 0x1C3;
 static constexpr size_t kEntityHPOffset = 0x354;
 static constexpr size_t kEntityMaxHPOffset = 0x358;
@@ -545,13 +545,18 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
     // 4. Status Effect Badges (verified ARM64 engine bitshifts)
     std::vector<int> activeStatusIndices;
-    if (data.flags & (1ULL << 6))  activeStatusIndices.push_back(5);  // Poison (Green droplet)
-    if (data.flags & (1ULL << 12)) activeStatusIndices.push_back(0);  // Burn (Orange flame)
-    if (data.flags & (1ULL << 7))  activeStatusIndices.push_back(6);  // Slow (Snail)
-    if (data.flags & (1ULL << 8))  activeStatusIndices.push_back(1);  // Charm (Pink heart)
-    if (data.flags & (1ULL << 9))  activeStatusIndices.push_back(2);  // Confusion (Stars)
-    if (data.flags & (1ULL << 11)) activeStatusIndices.push_back(3);  // Fear (Purple face)
-    if (data.flags & (1ULL << 34)) activeStatusIndices.push_back(9);  // Bleed out (Blood droplet)
+    if (data.flags & (1ULL << 12)) activeStatusIndices.push_back(0);  // Burn (Orange flame, frame 0)
+    if (data.flags & (1ULL << 8))  activeStatusIndices.push_back(1);  // Charm (Pink heart, frame 1)
+    if (data.flags & (1ULL << 9))  activeStatusIndices.push_back(2);  // Confusion (Stars, frame 2)
+    if (data.flags & (1ULL << 11)) activeStatusIndices.push_back(3);  // Fear (Purple face, frame 3)
+    if (data.flags & ((1ULL << 5) | (1ULL << 10))) activeStatusIndices.push_back(4);  // Freeze/Petrify (Stone face, frame 4)
+    if (data.flags & (1ULL << 6))  activeStatusIndices.push_back(5);  // Poison (Green droplet, frame 5)
+    if (data.flags & (1ULL << 7))  activeStatusIndices.push_back(6);  // Slow (Snail, frame 6)
+    if (data.flags & ((1ULL << 34) | (1ULL << 39))) activeStatusIndices.push_back(9);  // Bleed out (Blood droplet, frame 9)
+    if (data.flags & (1ULL << 40)) activeStatusIndices.push_back(10); // Baited (Meat, frame 10)
+    if (data.flags & ((1ULL << 41) | (1ULL << 43))) activeStatusIndices.push_back(12); // Ice freeze (Ice, frame 12)
+    if (data.flags & (1ULL << 44)) activeStatusIndices.push_back(13); // Magnetized (frame 13)
+    if (data.flags & (1ULL << 45)) activeStatusIndices.push_back(15); // Weakness (frame 15)
 
     if (activeStatusIndices.empty()) {
         _statusContainer.hidden = YES;
@@ -1151,39 +1156,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         [view updateWithData:bosses[i] bundle:self.modBundle];
     }
 
-    // Live Debug Banner (Wi-Fi server address + active status bits)
-    if (!_debugLabel) {
-        _debugLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-        _debugLabel.textColor = [UIColor colorWithWhite:1.0 alpha:0.95];
-        _debugLabel.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.65];
-        _debugLabel.font = [UIFont fontWithName:@"Courier-Bold" size:11.0] ?: [UIFont boldSystemFontOfSize:11.0];
-        _debugLabel.textAlignment = NSTextAlignmentCenter;
-        _debugLabel.layer.cornerRadius = 4.0;
-        _debugLabel.layer.masksToBounds = YES;
-        _debugLabel.numberOfLines = 1;
-        [self.rootView addSubview:_debugLabel];
-    }
-
-    NSString *ip = BossBarDebugServerGetLocalIP();
-    if (count > 0) {
-        const auto &b0 = bosses[0];
-        NSMutableString *bits = [NSMutableString string];
-        for (int bit = 0; bit < 64; ++bit) {
-            if (b0.flags & (1ULL << bit)) {
-                if (bits.length > 0) [bits appendString:@","];
-                [bits appendFormat:@"%d", bit];
-            }
-        }
-        _debugLabel.text = [NSString stringWithFormat:@"📡 http://%@:8765 | 0x560: 0x%016llX [%@]",
-                            ip, (unsigned long long)b0.flags, bits.length > 0 ? bits : @"clean"];
-        _debugLabel.hidden = NO;
-        CGFloat lblW = MIN(window.bounds.size.width - 20.0, 420.0);
-        CGFloat lblH = 18.0;
-        CGFloat lblX = (window.bounds.size.width - lblW) / 2.0;
-        CGFloat lblY = newFrame.origin.y - lblH - 6.0;
-        _debugLabel.frame = CGRectMake(lblX, lblY, lblW, lblH);
-        [self.rootView bringSubviewToFront:_debugLabel];
-    } else {
+    if (_debugLabel) {
         _debugLabel.hidden = YES;
     }
 }
