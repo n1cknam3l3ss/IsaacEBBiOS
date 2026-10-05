@@ -730,12 +730,19 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         roomType = 0;
     }
 
+    int32_t stage = 0;
+    SafeRead(game + 0x0, stage);
+    bool isChestOrDarkRoom = (stage == 10 || stage == 11);
+
     // Only display boss bars in rooms that actually host boss fights:
-    // RoomType 5:  ROOM_BOSS (Standard floor bosses, Delirium, Mother, Mega Satan, Beast)
+    // RoomType 5:  ROOM_BOSS (Standard floor bosses, Delirium, Mother, Beast)
     // RoomType 15: ROOM_BOSSRUSH (Boss Rush)
     // RoomType 6:  ROOM_MINIBOSS (Mini-boss rooms: Sins, Krampus)
     // RoomType 11: ROOM_CHALLENGE (Challenge room boss waves)
-    bool isBossFightRoom = (roomType == 5 || roomType == 15 || roomType == 6 || roomType == 11);
+    // RoomType 22: ROOM_MEGA_SATAN (Mega Satan Arena)
+    // Stage 10 (The Chest) & Stage 11 (Dark Room): Vanilla Isaac fills normal rooms (roomType == 1) with bosses!
+    bool isBossFightRoom = (roomType == 5 || roomType == 15 || roomType == 6 || roomType == 11 || roomType == 22) ||
+                           (isChestOrDarkRoom && roomType == 1);
     if (!isBossFightRoom) {
         [self setOverlayVisible:NO];
         return;
@@ -983,7 +990,6 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
             }
 
             if (activeBosses.size() >= 4) break;
-        }
     }
 
     // Visual sorting for Mega Satan fight: Left Hand (2), Head (0), Right Hand (1)
