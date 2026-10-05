@@ -48,16 +48,17 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.1
-          name: "Isaac Enhanced Boss Bars iOS v1.1.1"
+          tag_name: v1.1.2
+          name: "Isaac Enhanced Boss Bars iOS v1.1.2"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.1.1)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.1.2)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.1.1:
-            - **Fixed Spurious Bleed Out Icon**: Removed internal engine bit 39 check that was persistently set on several base entities, ensuring Bleed Out exclusively triggers when bit 34 is active (e.g. from Mom's Razor / Backstabber).
-            - **Strict Verified Bitmask**: Status badges strictly limited to the 8 empirically verified ARM64 engine status bitshifts (Burn 12, Charm 8, Confusion 9, Fear 11, Freeze 5, Poison 6, Slow 7, Bleed 34).
+            ### What's New in v1.1.2:
+            - **Expanded Boss Encounter Rooms**: Added boss bar support for Krampus in Devil Deals (roomType 14), Greed & Super Greed in Shops (roomType 2) and Secret/Super Secret/Ultra Secret rooms (roomType 7, 8, 29), and Angel fights in Angel/Sacrifice rooms (roomType 13, 15).
+            - **Late-Game Floor Normal Rooms**: Bosses appearing in normal rooms (roomType 1) across Womb 1 & 2 / Utero / Scarred Womb / Corpse (stages 7, 8), Sheol & Cathedral (stage 10), Chest & Dark Room (stage 11), and The Void (stage 12) now display full boss bars!
+            - **Strict Status Badges & Clean HUD Retained**: Zero false-positive status indicators and authentic pixel-perfect display.
             - **All Boss Logic Retained**: Boss room restriction, segmented worm HP merging (Larry Jr, Chub, Pin), Gemini/Blighted Ovum deduplication, and Chest / Dark Room compatibility.
 
             ### Installation:

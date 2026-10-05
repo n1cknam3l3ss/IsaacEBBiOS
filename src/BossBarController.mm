@@ -776,17 +776,30 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
     int32_t stage = 0;
     SafeRead(game + 0x0, stage);
-    bool isChestOrDarkRoom = (stage == 10 || stage == 11);
+    // Late-game stages where vanilla Isaac regularly spawns bosses in normal rooms (roomType == 1):
+    // Stage 7 & 8: Womb 1 & 2 / Utero / Scarred Womb / Corpse 1 & 2
+    // Stage 10:    Sheol / Cathedral
+    // Stage 11:    Dark Room / The Chest
+    // Stage 12:    The Void
+    bool isLateGameStage = (stage == 7 || stage == 8 || stage == 10 || stage == 11 || stage == 12);
 
-    // Only display boss bars in rooms that actually host boss fights:
+    // Only display boss bars in rooms that legitimately host boss fights:
     // RoomType 5:  ROOM_BOSS (Standard floor bosses, Delirium, Mother, Beast)
-    // RoomType 15: ROOM_BOSSRUSH (Boss Rush)
-    // RoomType 6:  ROOM_MINIBOSS (Mini-boss rooms: Sins, Krampus)
-    // RoomType 11: ROOM_CHALLENGE (Challenge room boss waves)
+    // RoomType 6:  ROOM_MINIBOSS (Mini-boss rooms: 7 Sins)
+    // RoomType 11: ROOM_CHALLENGE (Challenge room / Boss Challenge room)
+    // RoomType 17: ROOM_BOSSRUSH (Boss Rush)
+    // RoomType 14: ROOM_DEVIL (Devil Deal: Krampus)
+    // RoomType 15: ROOM_ANGEL (Angel Deal: Uriel / Gabriel statue fights)
+    // RoomType 13: ROOM_SACRIFICE (Sacrifice Room: Angel fights)
+    // RoomType 2:  ROOM_SHOP (Shop: Greed / Super Greed)
+    // RoomType 7, 8, 29: ROOM_SECRET, ROOM_SUPERSECRET, ROOM_ULTRASECRET (Secret rooms: Greed / Super Greed)
     // RoomType 22: ROOM_MEGA_SATAN (Mega Satan Arena)
-    // Stage 10 (The Chest) & Stage 11 (Dark Room): Vanilla Isaac fills normal rooms (roomType == 1) with bosses!
-    bool isBossFightRoom = (roomType == 5 || roomType == 15 || roomType == 6 || roomType == 11 || roomType == 22) ||
-                           (isChestOrDarkRoom && roomType == 1);
+    // RoomType 1:  ROOM_DEFAULT (Only allowed on late-game stages: Womb/Void/Sheol/Cathedral/Chest/Dark Room)
+    bool isBossFightRoom = (roomType == 5 || roomType == 6 || roomType == 11 || roomType == 17 ||
+                            roomType == 14 || roomType == 15 || roomType == 13 ||
+                            roomType == 2 || roomType == 7 || roomType == 8 || roomType == 29 ||
+                            roomType == 22) ||
+                           (isLateGameStage && roomType == 1);
     if (!isBossFightRoom) {
         [self setOverlayVisible:NO];
         return;
