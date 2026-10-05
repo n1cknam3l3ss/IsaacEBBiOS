@@ -549,14 +549,10 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     if (data.flags & (1ULL << 8))  activeStatusIndices.push_back(1);  // Charm (Pink heart, frame 1)
     if (data.flags & (1ULL << 9))  activeStatusIndices.push_back(2);  // Confusion (Stars, frame 2)
     if (data.flags & (1ULL << 11)) activeStatusIndices.push_back(3);  // Fear (Purple face, frame 3)
-    if (data.flags & ((1ULL << 5) | (1ULL << 10))) activeStatusIndices.push_back(4);  // Freeze/Petrify (Stone face, frame 4)
+    if (data.flags & (1ULL << 5))  activeStatusIndices.push_back(4);  // Freeze/Petrify (Stone face, frame 4)
     if (data.flags & (1ULL << 6))  activeStatusIndices.push_back(5);  // Poison (Green droplet, frame 5)
     if (data.flags & (1ULL << 7))  activeStatusIndices.push_back(6);  // Slow (Snail, frame 6)
-    if (data.flags & ((1ULL << 34) | (1ULL << 39))) activeStatusIndices.push_back(9);  // Bleed out (Blood droplet, frame 9)
-    if (data.flags & (1ULL << 40)) activeStatusIndices.push_back(10); // Baited (Meat, frame 10)
-    if (data.flags & ((1ULL << 41) | (1ULL << 43))) activeStatusIndices.push_back(12); // Ice freeze (Ice, frame 12)
-    if (data.flags & (1ULL << 44)) activeStatusIndices.push_back(13); // Magnetized (frame 13)
-    if (data.flags & (1ULL << 45)) activeStatusIndices.push_back(15); // Weakness (frame 15)
+    if (data.flags & (1ULL << 34)) activeStatusIndices.push_back(9);  // Bleed out (Blood droplet, frame 9)
 
     if (activeStatusIndices.empty()) {
         _statusContainer.hidden = YES;

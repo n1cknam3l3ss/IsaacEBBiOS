@@ -1,6 +1,6 @@
 Package: com.nicknameless.isaacenhancedbossbars
 Name: Isaac Enhanced Boss Bars iOS
-Version: 1.1.0
+Version: 1.1.1
 Architecture: iphoneos-arm64
 Description: Enhanced Boss Bars port for The Binding of Isaac on iOS. Custom stylish boss HP bars, boss portrait icons, and live status effect indicators.
 Maintainer: nicknameless

@@ -48,16 +48,16 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
-          name: "Isaac Enhanced Boss Bars iOS v1.1.0"
+          tag_name: v1.1.1
+          name: "Isaac Enhanced Boss Bars iOS v1.1.1"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.1.0)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.1.1)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.1.0:
-            - **Accurate Native Status Effect Badges**: Full live status effect indicators (Burn, Charm, Confusion, Fear, Freeze/Petrify, Poison, Slow, Bleed Out, Baited, Weakness) mapped to verified ARM64 engine bit positions at entity offset `0x1B8`. Every badge appears directly above the boss health bar and disappears as soon as the effect expires.
-            - **Clean Immersive HUD**: Removed temporary on-screen Wi-Fi banner for a clean, authentic, pixel-perfect boss bar interface.
+            ### What's New in v1.1.1:
+            - **Fixed Spurious Bleed Out Icon**: Removed internal engine bit 39 check that was persistently set on several base entities, ensuring Bleed Out exclusively triggers when bit 34 is active (e.g. from Mom's Razor / Backstabber).
+            - **Strict Verified Bitmask**: Status badges strictly limited to the 8 empirically verified ARM64 engine status bitshifts (Burn 12, Charm 8, Confusion 9, Fear 11, Freeze 5, Poison 6, Slow 7, Bleed 34).
             - **All Boss Logic Retained**: Boss room restriction, segmented worm HP merging (Larry Jr, Chub, Pin), Gemini/Blighted Ovum deduplication, and Chest / Dark Room compatibility.
 
             ### Installation:
