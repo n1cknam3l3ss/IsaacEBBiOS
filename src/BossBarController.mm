@@ -17,6 +17,11 @@ static constexpr size_t kRoomConfigTypeOffset = 0x8;
 static constexpr size_t kRoomEntitiesArrayOffset = 0x19C8;
 static constexpr size_t kRoomEntitiesCountOffset = 0x19D4;
 
+// Engine Game state offsets (cutscenes, VS splash screen, gameplay active)
+static constexpr size_t kGameVersusScreenOffset = 0x25810;
+static constexpr size_t kGameIsGameplayActiveOffset = 0x10d45a;
+static constexpr size_t kGameCutsceneEventOffset = 0x21560;
+
 // Entity offsets
 static constexpr size_t kEntityTypeOffset = 0x38;
 static constexpr size_t kEntityVariantOffset = 0x3C;
@@ -713,6 +718,32 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     uintptr_t gamePtrAddr = self.baseAddress + kGameGlobalRVA;
     uintptr_t game = 0;
     if (!SafeRead(gamePtrAddr, game) || !game) {
+        [self setOverlayVisible:NO];
+        return;
+    }
+
+    // 1. Versus intro splash screen ("Isaac VS ...") check:
+    // When Isaac enters a boss room, an intro animation plays (versusState 1..4).
+    // The boss bar must remain hidden until the VS splash animation completes (versusState == 0).
+    int32_t versusState = 0;
+    if (SafeRead(game + kGameVersusScreenOffset, versusState) && versusState != 0) {
+        [self setOverlayVisible:NO];
+        return;
+    }
+
+    // 2. Active gameplay check:
+    // Isaac engine sets Game + 0x10d45a to 0 during VS splash screen, room transitions, and pause/cutscenes.
+    // Vanilla engine uses: ldrb w8, [Game + 0x10d45a]; cbz w8, SKIP_BOSS_BAR_RENDER.
+    uint8_t isGameplayActive = 1;
+    if (SafeRead(game + kGameIsGameplayActiveOffset, isGameplayActive) && isGameplayActive == 0) {
+        [self setOverlayVisible:NO];
+        return;
+    }
+
+    // 3. Cutscene event check:
+    // Non-zero when an in-game cutscene or cinematic is active.
+    int32_t cutsceneEvent = 0;
+    if (SafeRead(game + kGameCutsceneEventOffset, cutsceneEvent) && cutsceneEvent != 0) {
         [self setOverlayVisible:NO];
         return;
     }
