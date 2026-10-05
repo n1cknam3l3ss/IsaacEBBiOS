@@ -25,15 +25,25 @@ static constexpr size_t kEntityFlagsOffset = 0x560;
 static constexpr size_t kEntityIsDeadOffset = 0x1C3;
 static constexpr size_t kEntityHPOffset = 0x354;
 static constexpr size_t kEntityMaxHPOffset = 0x358;
+static constexpr size_t kEntityParentOffset = 0x6e0;
+
+// Engine Flags (exact Repentance bitshifts)
+static constexpr uint64_t FLAG_BOSSDEATH_TRIGGERED = 1ULL << 20;
+static constexpr uint64_t FLAG_FRIENDLY            = 1ULL << 29;
+static constexpr uint64_t FLAG_DONT_COUNT_BOSS_HP  = 1ULL << 31;
 
 // Entity Status Flags (exact bitshifts in The Binding of Isaac: Repentance)
-static constexpr uint64_t FLAG_FREEZE    = 1ULL << 5;
-static constexpr uint64_t FLAG_POISON    = 1ULL << 6;
-static constexpr uint64_t FLAG_SLOW      = 1ULL << 7;
-static constexpr uint64_t FLAG_CHARM     = 1ULL << 8;
-static constexpr uint64_t FLAG_CONFUSION = 1ULL << 9;
-static constexpr uint64_t FLAG_FEAR      = 1ULL << 11;
-static constexpr uint64_t FLAG_BURN      = 1ULL << 12;
+static constexpr uint64_t FLAG_FREEZE     = 1ULL << 5;
+static constexpr uint64_t FLAG_POISON     = 1ULL << 6;
+static constexpr uint64_t FLAG_SLOW       = 1ULL << 7;
+static constexpr uint64_t FLAG_CHARM      = 1ULL << 8;
+static constexpr uint64_t FLAG_CONFUSION  = 1ULL << 9;
+static constexpr uint64_t FLAG_FEAR       = 1ULL << 11;
+static constexpr uint64_t FLAG_BURN       = 1ULL << 12;
+static constexpr uint64_t FLAG_BLEED_OUT  = 1ULL << 39;
+static constexpr uint64_t FLAG_BAITED     = 1ULL << 40;
+static constexpr uint64_t FLAG_MAGNETIZED = 1ULL << 44;
+static constexpr uint64_t FLAG_WEAKNESS   = 1ULL << 45;
 
 struct ActiveBossData {
     uintptr_t entityPtr;
@@ -196,13 +206,13 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         }
         entry.fillAnimationImages = staticFrames;
         entry.fillImage = staticFrames.firstObject;
-        entry.damageFlashImage = TintImage(entry.fillImage, [UIColor colorWithWhite:1.0 alpha:0.9]);
+        entry.damageFlashImage = TintImage(entry.fillImage, [UIColor colorWithWhite:1.0 alpha:0.95]);
     }
     // 2. Colostomia (crop at X=170)
     else if ([lowerKey containsString:@"colostomia"]) {
         UIImage *rawFill = SliceCGImage(cgSheet, CGRectMake(170, 0, 120, 32));
         entry.fillImage = rawFill;
-        entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.9]);
+        entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.95]);
     }
     // 3. Thematic / Standard boss bars
     else {
@@ -210,13 +220,13 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         if (style.isDefaultTint) {
             // Authentic Repentance red tint: (0.84, 0.12, 0.15)
             entry.fillImage = TintImage(rawFill, [UIColor colorWithRed:0.84 green:0.12 blue:0.15 alpha:1.0]);
-            // Amber flash on damage: (0.95, 0.78, 0.25)
-            entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithRed:0.95 green:0.78 blue:0.25 alpha:1.0]);
+            // Bright white damage flash
+            entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.95]);
         } else {
             // Natural thematic texture color (Delirium yellow, Mother bone, Beast lava, etc.)
             entry.fillImage = rawFill;
             // Bright white damage flash
-            entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.9]);
+            entry.damageFlashImage = TintImage(rawFill, [UIColor colorWithWhite:1.0 alpha:0.95]);
         }
     }
 
@@ -320,12 +330,10 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
 @interface SingleBossBarView : UIView
 
-@property (nonatomic, strong) UIView *barContainer;
 @property (nonatomic, strong) UIImageView *bgImageView;
-@property (nonatomic, strong) UIView *damageFillContainer;
-@property (nonatomic, strong) UIImageView *damageFillImageView;
 @property (nonatomic, strong) UIView *fillContainer;
 @property (nonatomic, strong) UIImageView *fillImageView;
+@property (nonatomic, strong) UIImageView *fillFlashImageView;
 @property (nonatomic, strong) UIImageView *overlayImageView;
 @property (nonatomic, strong) UIImageView *iconView;
 
@@ -333,10 +341,15 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 @property (nonatomic, strong) NSMutableArray<UIImageView *> *statusIcons;
 
 @property (nonatomic, assign) CGFloat pixelScale;
-@property (nonatomic, assign) CGFloat fillTotalWidth;
+@property (nonatomic, assign) CGFloat barW;
+@property (nonatomic, assign) CGFloat barH;
 @property (nonatomic, assign) CGFloat fillOffsetX;
-@property (nonatomic, assign) CGFloat extraLeftPad;
+@property (nonatomic, assign) CGFloat fillTotalWidth;
 
+@property (nonatomic, assign) uintptr_t currentEntityPtr;
+@property (nonatomic, assign) float lastHP;
+
+- (void)applyScale:(CGFloat)scale;
 - (void)updateWithData:(const ActiveBossData &)data bundle:(NSBundle *)bundle;
 
 @end
@@ -348,76 +361,64 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     if (self) {
         self.backgroundColor = UIColor.clearColor;
         self.userInteractionEnabled = NO;
-        _pixelScale = 1.75;
+        self.clipsToBounds = NO; // Allow status badges floating above to render without clipping
+
+        _pixelScale = 1.6;
+        _barW = 160.0 * _pixelScale;
+        _barH = 32.0 * _pixelScale;
+        _fillOffsetX = 20.0 * _pixelScale;
+        _fillTotalWidth = 120.0 * _pixelScale;
         _statusIcons = [NSMutableArray array];
+        _lastHP = -1.0f;
+        _currentEntityPtr = 0;
 
-        // Layout constants at scale 1.75:
-        // Background frame: 160 x 32 px -> 280 x 56 pt
-        CGFloat barW = 160.0 * _pixelScale;
-        CGFloat barH = 32.0 * _pixelScale;
-        _extraLeftPad = 48.0; // Space for status badges to the left of the portrait
-
-        _fillOffsetX = 20.0 * _pixelScale;   // 35.0 pt
-        _fillTotalWidth = 120.0 * _pixelScale; // 210.0 pt
-
-        // 1. Status effects container (to the left of the boss portrait)
-        _statusContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, _extraLeftPad, barH)];
+        // 1. Status effects container (floats directly above the bar, Y = -18.0 * scale)
+        _statusContainer = [[UIView alloc] initWithFrame:CGRectMake(0, -18.0 * _pixelScale, _barW, 16.0 * _pixelScale)];
         _statusContainer.backgroundColor = UIColor.clearColor;
         _statusContainer.userInteractionEnabled = NO;
+        _statusContainer.clipsToBounds = NO;
         [self addSubview:_statusContainer];
 
-        // 2. Bar Container (seamlessly hosts background frame, fills, overlay, and boss portrait)
-        _barContainer = [[UIView alloc] initWithFrame:CGRectMake(_extraLeftPad, 0, barW, barH)];
-        _barContainer.backgroundColor = UIColor.clearColor;
-        _barContainer.userInteractionEnabled = NO;
-        _barContainer.clipsToBounds = NO;
-        [self addSubview:_barContainer];
-
-        // 3. Background Frame Sprite (starts at X=0, frame notch at X=18..26)
-        _bgImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, barW, barH)];
+        // 2. Background Frame Sprite
+        _bgImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, _barW, _barH)];
         _bgImageView.contentMode = UIViewContentModeScaleToFill;
         _bgImageView.layer.magnificationFilter = kCAFilterNearest;
         _bgImageView.layer.minificationFilter = kCAFilterNearest;
         _bgImageView.userInteractionEnabled = NO;
-        [_barContainer addSubview:_bgImageView];
+        [self addSubview:_bgImageView];
 
-        // 4. Delayed Damage Flash Fill Container
-        _damageFillContainer = [[UIView alloc] initWithFrame:CGRectMake(_fillOffsetX, 0, _fillTotalWidth, barH)];
-        _damageFillContainer.clipsToBounds = YES;
-        _damageFillContainer.backgroundColor = UIColor.clearColor;
-        _damageFillContainer.userInteractionEnabled = NO;
-        [_barContainer addSubview:_damageFillContainer];
-
-        _damageFillImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, _fillTotalWidth, barH)];
-        _damageFillImageView.contentMode = UIViewContentModeScaleToFill;
-        _damageFillImageView.layer.magnificationFilter = kCAFilterNearest;
-        _damageFillImageView.layer.minificationFilter = kCAFilterNearest;
-        _damageFillImageView.userInteractionEnabled = NO;
-        [_damageFillContainer addSubview:_damageFillImageView];
-
-        // 5. Main HP Fill Container
-        _fillContainer = [[UIView alloc] initWithFrame:CGRectMake(_fillOffsetX, 0, _fillTotalWidth, barH)];
+        // 3. Main HP Fill Container
+        _fillContainer = [[UIView alloc] initWithFrame:CGRectMake(_fillOffsetX, 0, _fillTotalWidth, _barH)];
         _fillContainer.clipsToBounds = YES;
         _fillContainer.backgroundColor = UIColor.clearColor;
         _fillContainer.userInteractionEnabled = NO;
-        [_barContainer addSubview:_fillContainer];
+        [self addSubview:_fillContainer];
 
-        _fillImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, _fillTotalWidth, barH)];
+        _fillImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, _fillTotalWidth, _barH)];
         _fillImageView.contentMode = UIViewContentModeScaleToFill;
         _fillImageView.layer.magnificationFilter = kCAFilterNearest;
         _fillImageView.layer.minificationFilter = kCAFilterNearest;
         _fillImageView.userInteractionEnabled = NO;
         [_fillContainer addSubview:_fillImageView];
 
-        // 6. Thematic Overlay Sprite (Mother creeping bones, Beast fire)
-        _overlayImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, barW, barH)];
+        // 4. White Damage Flash View (flashes on damage hit, 0 decaying tail)
+        _fillFlashImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, _fillTotalWidth, _barH)];
+        _fillFlashImageView.contentMode = UIViewContentModeScaleToFill;
+        _fillFlashImageView.layer.magnificationFilter = kCAFilterNearest;
+        _fillFlashImageView.layer.minificationFilter = kCAFilterNearest;
+        _fillFlashImageView.userInteractionEnabled = NO;
+        _fillFlashImageView.alpha = 0.0;
+        [_fillContainer addSubview:_fillFlashImageView];
+
+        // 5. Thematic Overlay Sprite (Mother creeping bones, Beast fire)
+        _overlayImageView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, _barW, _barH)];
         _overlayImageView.contentMode = UIViewContentModeScaleToFill;
         _overlayImageView.layer.magnificationFilter = kCAFilterNearest;
         _overlayImageView.layer.minificationFilter = kCAFilterNearest;
         _overlayImageView.userInteractionEnabled = NO;
-        [_barContainer addSubview:_overlayImageView];
+        [self addSubview:_overlayImageView];
 
-        // 7. Boss Portrait Icon (centered at X=16, Y=16 of bar coordinate space to seamlessly sit in notch)
+        // 6. Boss Portrait Icon (centered at X=16, Y=16 to seamlessly sit in notch)
         CGFloat iconCenter = 16.0 * _pixelScale;
         CGFloat defaultIconSize = 32.0 * _pixelScale;
         _iconView = [[UIImageView alloc] initWithFrame:CGRectMake(iconCenter - defaultIconSize / 2.0,
@@ -427,9 +428,33 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         _iconView.layer.magnificationFilter = kCAFilterNearest;
         _iconView.layer.minificationFilter = kCAFilterNearest;
         _iconView.userInteractionEnabled = NO;
-        [_barContainer addSubview:_iconView];
+        [self addSubview:_iconView];
     }
     return self;
+}
+
+- (void)applyScale:(CGFloat)scale {
+    if (fabs(_pixelScale - scale) < 0.001) return;
+    _pixelScale = scale;
+    _barW = 160.0 * scale;
+    _barH = 32.0 * scale;
+    _fillOffsetX = 20.0 * scale;
+    _fillTotalWidth = 120.0 * scale;
+
+    self.bounds = CGRectMake(0, 0, _barW, _barH);
+    _bgImageView.frame = CGRectMake(0, 0, _barW, _barH);
+    _overlayImageView.frame = CGRectMake(0, 0, _barW, _barH);
+
+    CGFloat currentRatio = (_lastHP > 0.0f) ? (_fillContainer.frame.size.width / (_fillTotalWidth > 0 ? _fillTotalWidth : 1.0)) : 1.0;
+    _fillContainer.frame = CGRectMake(_fillOffsetX, 0, _fillTotalWidth * currentRatio, _barH);
+    _fillImageView.frame = CGRectMake(0, 0, _fillTotalWidth, _barH);
+    _fillFlashImageView.frame = CGRectMake(0, 0, _fillTotalWidth, _barH);
+
+    _statusContainer.frame = CGRectMake(0, -18.0 * scale, _barW, 16.0 * scale);
+
+    CGFloat centerCoord = 16.0 * scale;
+    CGFloat iconSize = (_iconView.frame.size.width > 40.0 * scale) ? (64.0 * scale) : (32.0 * scale);
+    _iconView.frame = CGRectMake(centerCoord - iconSize / 2.0, centerCoord - iconSize / 2.0, iconSize, iconSize);
 }
 
 - (void)updateWithData:(const ActiveBossData &)data bundle:(NSBundle *)bundle {
@@ -444,7 +469,7 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     BossBarTextureEntry *entry = [cache entryForStyle:style bundle:bundle];
     if (entry) {
         _bgImageView.image = entry.bgImage;
-        _damageFillImageView.image = entry.damageFlashImage;
+        _fillFlashImageView.image = entry.damageFlashImage;
         _overlayImageView.image = entry.overlayImage;
         _overlayImageView.hidden = (entry.overlayImage == nil);
 
@@ -469,13 +494,8 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     BossBarIconEntry *iconEntry = [cache iconEntryForRelPath:iconRel bundle:bundle];
     if (iconEntry) {
         CGFloat centerCoord = 16.0 * _pixelScale;
-        if (iconEntry.isLarge) {
-            CGFloat size = 64.0 * _pixelScale;
-            _iconView.frame = CGRectMake(centerCoord - size / 2.0, centerCoord - size / 2.0, size, size);
-        } else {
-            CGFloat size = 32.0 * _pixelScale;
-            _iconView.frame = CGRectMake(centerCoord - size / 2.0, centerCoord - size / 2.0, size, size);
-        }
+        CGFloat size = iconEntry.isLarge ? (64.0 * _pixelScale) : (32.0 * _pixelScale);
+        _iconView.frame = CGRectMake(centerCoord - size / 2.0, centerCoord - size / 2.0, size, size);
 
         if (iconEntry.animationImages.count > 1) {
             if (![_iconView.animationImages isEqualToArray:iconEntry.animationImages]) {
@@ -492,36 +512,58 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         }
     }
 
-    // 3. Smooth HP bar draining animation
+    // 3. Crisp HP bar update & Damage Flash
+    float currentHP = data.currentHP;
     float maxHP = data.maxHP > 0.0f ? data.maxHP : 1.0f;
-    float targetRatio = MAX(0.0f, MIN(1.0f, data.currentHP / maxHP));
+    float targetRatio = MAX(0.0f, MIN(1.0f, currentHP / maxHP));
     CGFloat targetWidth = _fillTotalWidth * targetRatio;
 
-    CGFloat barH = 32.0 * _pixelScale;
-    [UIView animateWithDuration:0.10 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
-        self.fillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, barH);
+    if (self.currentEntityPtr == data.entityPtr) {
+        // Flash bright white on damage hit (like in game)
+        if (self.lastHP > 0.0f && currentHP < self.lastHP - 0.001f) {
+            self.fillFlashImageView.alpha = 1.0;
+            [UIView animateWithDuration:0.12 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+                self.fillFlashImageView.alpha = 0.0;
+            } completion:nil];
+        }
+    } else {
+        self.currentEntityPtr = data.entityPtr;
+        self.fillFlashImageView.alpha = 0.0;
+    }
+    self.lastHP = currentHP;
+
+    // Immediate crisp bar update (no fading / decaying tail)
+    [UIView animateWithDuration:0.06 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
+        self.fillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, self.barH);
     } completion:nil];
 
-    [UIView animateWithDuration:0.35 delay:0.12 options:UIViewAnimationOptionCurveEaseInOut animations:^{
-        self.damageFillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, barH);
-    } completion:nil];
-
-    // 4. Status Effect Badges (pixel icons, rendered directly to the left of the portrait)
+    // 4. Status Effect Badges (floating directly above the HP bar)
     std::vector<int> activeStatusIndices;
-    if (data.flags & FLAG_POISON)    activeStatusIndices.push_back(5);  // Green droplet
-    if (data.flags & FLAG_BURN)      activeStatusIndices.push_back(0);  // Orange flame
-    if (data.flags & FLAG_FREEZE)    activeStatusIndices.push_back(12); // Cyan snowflake
-    if (data.flags & FLAG_SLOW)      activeStatusIndices.push_back(6);  // Snail
-    if (data.flags & FLAG_CHARM)     activeStatusIndices.push_back(1);  // Pink heart
-    if (data.flags & FLAG_FEAR)      activeStatusIndices.push_back(3);  // Purple face
-    if (data.flags & FLAG_CONFUSION) activeStatusIndices.push_back(2);  // Confusion stars
+    if (data.flags & FLAG_POISON)     activeStatusIndices.push_back(5);  // Green droplet
+    if (data.flags & FLAG_BURN)       activeStatusIndices.push_back(0);  // Orange flame
+    if (data.flags & FLAG_FREEZE)     activeStatusIndices.push_back(12); // Cyan snowflake
+    if (data.flags & FLAG_SLOW)       activeStatusIndices.push_back(6);  // Snail
+    if (data.flags & FLAG_CHARM)      activeStatusIndices.push_back(1);  // Pink heart
+    if (data.flags & FLAG_FEAR)       activeStatusIndices.push_back(3);  // Purple face
+    if (data.flags & FLAG_CONFUSION)  activeStatusIndices.push_back(2);  // Confusion stars
+    if (data.flags & FLAG_BLEED_OUT)  activeStatusIndices.push_back(9);  // Bleed out
+    if (data.flags & FLAG_BAITED)     activeStatusIndices.push_back(10); // Baited
+    if (data.flags & FLAG_MAGNETIZED) activeStatusIndices.push_back(13); // Magnetized
+    if (data.flags & FLAG_WEAKNESS)   activeStatusIndices.push_back(15); // Weakness
+
+    CGFloat badgeSize = 14.0 * _pixelScale;
+    CGFloat badgeSpacing = 2.0 * _pixelScale;
+    CGFloat startX = 22.0 * _pixelScale;
 
     while (_statusIcons.count < activeStatusIndices.size()) {
-        CGFloat sSize = 16.0 * _pixelScale;
-        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectMake(0, (barH - sSize) / 2.0, sSize, sSize)];
+        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectZero];
         iv.contentMode = UIViewContentModeScaleAspectFit;
         iv.layer.magnificationFilter = kCAFilterNearest;
         iv.layer.minificationFilter = kCAFilterNearest;
+        iv.layer.shadowColor = UIColor.blackColor.CGColor;
+        iv.layer.shadowOpacity = 0.85;
+        iv.layer.shadowRadius = 1.0;
+        iv.layer.shadowOffset = CGSizeMake(0, 1.0);
         [_statusContainer addSubview:iv];
         [_statusIcons addObject:iv];
     }
@@ -531,17 +573,12 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         [_statusIcons removeLastObject];
     }
 
-    // Align status badges right-to-left towards the boss portrait
-    CGFloat badgeSize = 16.0 * _pixelScale;
-    CGFloat badgeSpacing = 3.0;
-    CGFloat rightEdge = _extraLeftPad - 2.0;
-
     for (size_t i = 0; i < activeStatusIndices.size(); ++i) {
         UIImageView *iv = _statusIcons[i];
         iv.image = [cache statusIconForIndex:activeStatusIndices[i] bundle:bundle];
-        CGFloat x = rightEdge - (i + 1) * badgeSize - i * badgeSpacing;
-        iv.frame = CGRectMake(x, (barH - badgeSize) / 2.0, badgeSize, badgeSize);
+        iv.frame = CGRectMake(startX + i * (badgeSize + badgeSpacing), 0, badgeSize, badgeSize);
     }
+    [self bringSubviewToFront:_statusContainer];
 }
 
 @end
@@ -614,20 +651,19 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
     self.rootView.userInteractionEnabled = NO;
     self.rootView.layer.zPosition = 9999.0f;
 
-    CGFloat pixelScale = 1.75;
-    CGFloat extraLeftPad = 48.0;
-    CGFloat singleBarW = 160.0 * pixelScale + extraLeftPad; // 328 pt
-    CGFloat singleBarH = 32.0 * pixelScale;                 // 56 pt
+    CGFloat initialW = 256.0;
+    CGFloat initialH = 51.2;
     CGFloat bottomInset = 16.0;
     if (@available(iOS 11.0, *)) {
         bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 4.0);
     }
 
-    self.containerView = [[UIView alloc] initWithFrame:CGRectMake((window.bounds.size.width - singleBarW) / 2.0,
-                                                                  window.bounds.size.height - singleBarH - bottomInset,
-                                                                  singleBarW, singleBarH)];
+    self.containerView = [[UIView alloc] initWithFrame:CGRectMake((window.bounds.size.width - initialW) / 2.0,
+                                                                  window.bounds.size.height - initialH - bottomInset,
+                                                                  initialW, initialH)];
     self.containerView.backgroundColor = UIColor.clearColor;
     self.containerView.userInteractionEnabled = NO;
+    self.containerView.clipsToBounds = NO;
     self.containerView.alpha = 0.0;
     self.containerView.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
                                           UIViewAutoresizingFlexibleRightMargin |
@@ -705,9 +741,11 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         return;
     }
 
-    // 1. Analyze room for special multi-phase bosses (Harbingers/Beast, Dogma)
-    int32_t activeHarbingerVariant = -1;
+    // 1. Pre-scan room for special boss encounters (Delirium isolation, Harbingers/Beast, Dogma)
+    bool isDeliriumActive = false;
     bool hasDogmaPhase2 = false;
+    bool hasBeastSilhouettes = false;
+    int32_t activeHarbingerVariant = -1;
 
     for (int32_t i = 0; i < count; ++i) {
         uintptr_t entity = 0;
@@ -715,25 +753,33 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         uint8_t isDead = 0;
         SafeRead(entity + kEntityIsDeadOffset, isDead);
         if (isDead) continue;
+
+        float hp = 0.0f;
+        SafeRead(entity + kEntityHPOffset, hp);
+        if (hp <= 0.0f) continue;
+
+        uint64_t flags = 0;
+        SafeRead(entity + kEntityFlagsOffset, flags);
+        // Skip dying/friendly entities or entities marked to not count boss HP
+        if (flags & (FLAG_DONT_COUNT_BOSS_HP | FLAG_BOSSDEATH_TRIGGERED | FLAG_FRIENDLY)) continue;
+
         int32_t type = 0, variant = 0;
         if (!SafeRead(entity + kEntityTypeOffset, type)) continue;
         SafeRead(entity + kEntityVariantOffset, variant);
 
-        if (type == 951 && (variant == 10 || variant == 20 || variant == 30 || variant == 40)) {
-            float hp = 0.0f;
-            SafeRead(entity + kEntityHPOffset, hp);
-            if (hp > 0.0f) {
-                // If multiple Harbingers exist during transitions, prioritize higher variant
+        if (type == 412) {
+            isDeliriumActive = true;
+        }
+        if (type == 950 && variant == 2) {
+            hasDogmaPhase2 = true;
+        }
+        if (type == 951) {
+            if (variant >= 100 && variant <= 104) {
+                hasBeastSilhouettes = true;
+            } else if (variant == 10 || variant == 20 || variant == 30 || variant == 40) {
                 if (variant > activeHarbingerVariant) {
                     activeHarbingerVariant = variant;
                 }
-            }
-        }
-        if (type == 950 && variant == 2) {
-            float hp = 0.0f;
-            SafeRead(entity + kEntityHPOffset, hp);
-            if (hp > 0.0f) {
-                hasDogmaPhase2 = true;
             }
         }
     }
@@ -750,6 +796,19 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         SafeRead(entity + kEntityIsDeadOffset, isDead);
         if (isDead) continue;
 
+        float hp = 0.0f;
+        SafeRead(entity + kEntityHPOffset, hp);
+        if (hp <= 0.0f) continue;
+
+        float maxHp = 0.0f;
+        SafeRead(entity + kEntityMaxHPOffset, maxHp);
+        if (maxHp <= 0.0f) continue;
+
+        uint64_t flags = 0;
+        SafeRead(entity + kEntityFlagsOffset, flags);
+        // Exclude cutscenes, dying bosses, or friendly entities
+        if (flags & (FLAG_DONT_COUNT_BOSS_HP | FLAG_BOSSDEATH_TRIGGERED | FLAG_FRIENDLY)) continue;
+
         int32_t type = 0;
         int32_t variant = 0;
         if (!SafeRead(entity + kEntityTypeOffset, type)) continue;
@@ -758,75 +817,72 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         // Filter: only boss NPCs (type >= 10 && < 1000)
         if (type < 10 || type >= 1000) continue;
 
-        // Dogma (Type 950):
+        // 1. Delirium isolation: when Delirium is alive, ignore all other boss types/transformations!
+        if (isDeliriumActive && type != 412) continue;
+
+        // 2. Dogma (Type 950):
         if (type == 950) {
-            // Ignore invulnerable cord/baby (Variant 0) and any helper entities
+            // Ignore cord baby (Variant 0)
             if (variant != 1 && variant != 2) continue;
             // When Phase 2 (Angel) is active, skip destroyed TV (Variant 1)
             if (variant == 1 && hasDogmaPhase2) continue;
         }
 
-        // The Beast & Ultra Harbingers (Type 951):
+        // 3. The Beast & Ultra Harbingers (Type 951):
         if (type == 951) {
-            // Strictly ignore background silhouettes (100..104) and sub-parts (2, 3, 11, etc.)
+            // Ignore silhouettes and sub-parts
             if (variant != 0 && variant != 10 && variant != 20 && variant != 30 && variant != 40) {
                 continue;
             }
-            if (activeHarbingerVariant > 0) {
-                // Harbingers are active: ONLY accept the active Harbinger
+            if (hasBeastSilhouettes) {
+                // Beast is swimming in background: NEVER accept Beast (Variant 0)
+                if (variant == 0) continue;
+                // Only accept active Harbinger; if none engaged yet, skip!
+                if (activeHarbingerVariant <= 0 || variant != activeHarbingerVariant) continue;
+            } else if (activeHarbingerVariant > 0) {
+                // Harbingers are active: ONLY accept active Harbinger
                 if (variant != activeHarbingerVariant) continue;
             } else {
-                // All Harbingers defeated: ONLY accept The Beast itself
+                // Harbingers defeated & no silhouettes: The Beast itself!
                 if (variant != 0) continue;
             }
         }
 
-        float hp = 0.0f;
-        float maxHp = 0.0f;
-        if (!SafeRead(entity + kEntityHPOffset, hp) || hp <= 0.0f) continue;
-        SafeRead(entity + kEntityMaxHPOffset, maxHp);
-        if (maxHp <= 0.0f) continue;
+        // 4. Worm segments (Larry Jr 19, Chub 28, Pin 62, Turdlet 918):
+        if (type == 19 || type == 28 || type == 62 || type == 918) {
+            uintptr_t parent = 0;
+            if (SafeRead(entity + kEntityParentOffset, parent) && parent != 0) {
+                continue; // Skip body/tail segments, keep only head (parent == 0)
+            }
+        }
+
+        // 5. Boss Ignore List (known non-boss helpers & sub-parts)
+        if (type == 45 && variant == 0) continue;    // Mom doors (Mom herself is 45.10)
+        if (type == 266 && (variant == 1 || variant == 2)) continue; // Mama Gurdy hands
+        if (type == 294 && variant == 0) continue;   // Ultra Greed door
+        if (type == 411 && variant == 1) continue;   // Big Horn sub
+        if (type == 866 && variant == 0) continue;   // Dark Esau (player hazard, not room boss)
+        if (type == 867 && variant == 0) continue;   // Mother's shadow
+        if (type == 906 && variant == 1) continue;   // Hornfel decoy
+        if (type == 912 && (variant == 30 || variant == 100)) continue; // Mother attacks
+        if (type == 919 && variant == 1) continue;   // Raglich arm
+        if (type == 964 && variant == 0) continue;   // Dummy NPC
 
         const BossBarInfo *info = FindBossInfo(type, variant);
 
         // Eligible if in database OR in a boss room with significant HP
         if (info || (roomType == 5 && maxHp >= 40.0f)) {
-            // Deduplicate multi-part / subsidiary entities of the same boss
-            // For Type 951, the entire sequence is treated as ONE boss bar
-            bool foundExisting = false;
+            // Check phase replacement for single-boss sequences (Dogma, Beast, Mega Satan 2)
+            bool shouldMergeOrReplace = false;
             for (auto &existing : activeBosses) {
-                bool isSameBoss = (existing.type == type);
-                if (isSameBoss) {
-                    foundExisting = true;
-                    // Determine if current entity should take precedence over existing
-                    bool shouldReplace = false;
-                    if (type == 950) {
-                        // Dogma Phase 2 (Angel) always replaces Phase 1 (TV)
-                        if (variant == 2 && existing.variant == 1) {
-                            shouldReplace = true;
-                        } else if (variant == existing.variant && maxHp > existing.maxHP) {
-                            shouldReplace = true;
-                        }
-                    } else if (type == 951) {
-                        // Beast sequence: replace previous harbinger / phase
-                        if (variant != existing.variant) {
-                            shouldReplace = true;
-                        } else if (maxHp > existing.maxHP) {
-                            shouldReplace = true;
-                        }
-                    } else if (variant != existing.variant && variant > existing.variant) {
-                        // Multi-phase bosses where Phase 2 has a higher variant (e.g. Mother, Satan)
-                        shouldReplace = true;
-                    } else if (maxHp > existing.maxHP) {
-                        shouldReplace = true;
-                    }
-
-                    if (shouldReplace) {
+                if (type == 950 && existing.type == 950) {
+                    // Dogma Phase 2 (Angel) replaces Phase 1 (TV)
+                    if (variant == 2 && existing.variant == 1) {
                         existing.entityPtr = entity;
                         existing.variant = variant;
                         existing.currentHP = hp;
                         existing.maxHP = maxHp;
-                        SafeRead(entity + kEntityFlagsOffset, existing.flags);
+                        existing.flags = flags;
                         if (info) {
                             existing.name = info->name;
                             existing.iconRelPath = info->iconRelPath;
@@ -835,11 +891,52 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
                             existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
                             existing.isDefaultTint = style.isDefaultTint;
                         }
+                        shouldMergeOrReplace = true;
+                        break;
                     }
+                } else if (type == 951 && existing.type == 951) {
+                    // Beast sequence: active phase replaces previous
+                    if (variant != existing.variant) {
+                        existing.entityPtr = entity;
+                        existing.variant = variant;
+                        existing.currentHP = hp;
+                        existing.maxHP = maxHp;
+                        existing.flags = flags;
+                        if (info) {
+                            existing.name = info->name;
+                            existing.iconRelPath = info->iconRelPath;
+                            BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+                            existing.barRelPath = style.barRelPath;
+                            existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+                            existing.isDefaultTint = style.isDefaultTint;
+                        }
+                        shouldMergeOrReplace = true;
+                        break;
+                    }
+                } else if (type == 275 && existing.type == 274) {
+                    // Mega Satan Phase 2 replaces Phase 1
+                    existing.entityPtr = entity;
+                    existing.type = 275;
+                    existing.variant = variant;
+                    existing.currentHP = hp;
+                    existing.maxHP = maxHp;
+                    existing.flags = flags;
+                    if (info) {
+                        existing.name = info->name;
+                        existing.iconRelPath = info->iconRelPath;
+                        BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+                        existing.barRelPath = style.barRelPath;
+                        existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+                        existing.isDefaultTint = style.isDefaultTint;
+                    }
+                    shouldMergeOrReplace = true;
                     break;
                 }
             }
-            if (foundExisting) continue;
+            if (shouldMergeOrReplace) {
+                seenEntities.insert(entity);
+                continue;
+            }
 
             ActiveBossData b;
             b.entityPtr = entity;
@@ -856,9 +953,6 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
             b.currentHP = hp;
             b.maxHP = maxHp;
-
-            uint64_t flags = 0;
-            SafeRead(entity + kEntityFlagsOffset, flags);
             b.flags = flags;
 
             seenEntities.insert(entity);
@@ -872,6 +966,26 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 
             if (activeBosses.size() >= 4) break;
         }
+    }
+
+    // Visual sorting for Mega Satan fight: Left Hand (2), Head (0), Right Hand (1)
+    bool hasMegaSatan = false;
+    for (const auto &b : activeBosses) {
+        if (b.type == 274) { hasMegaSatan = true; break; }
+    }
+    if (hasMegaSatan) {
+        std::sort(activeBosses.begin(), activeBosses.end(), [](const ActiveBossData &a, const ActiveBossData &b) {
+            if (a.type == 274 && b.type == 274) {
+                auto rank = [](int32_t v) {
+                    if (v == 2) return 0; // Left Hand
+                    if (v == 0) return 1; // Head
+                    if (v == 1) return 2; // Right Hand
+                    return v + 3;
+                };
+                return rank(a.variant) < rank(b.variant);
+            }
+            return a.entityPtr < b.entityPtr;
+        });
     }
 
     if (activeBosses.empty()) {
@@ -893,12 +1007,30 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
 }
 
 - (void)updateBarsWithBosses:(const std::vector<ActiveBossData> &)bosses {
-    CGFloat pixelScale = 1.75;
-    CGFloat extraLeftPad = 48.0;
-    CGFloat singleBarW = 160.0 * pixelScale + extraLeftPad; // 328.0 pt
-    CGFloat singleBarH = 32.0 * pixelScale;                 // 56.0 pt
-    CGFloat spacing = 4.0;
-    CGFloat totalH = bosses.size() * singleBarH + (bosses.size() - 1) * spacing;
+    size_t count = bosses.size();
+    if (count == 0) return;
+
+    // Dynamic horizontal scaling based on boss count:
+    // 1 boss: scale 1.6  (256 pt width, single row at bottom)
+    // 2 bosses: scale 1.25 (200 pt each, 14 pt spacing -> 414 pt total)
+    // 3 bosses: scale 0.98 (156.8 pt each, 10 pt spacing -> 490.4 pt total)
+    // 4 bosses: scale 0.82 (131.2 pt each, 8 pt spacing -> 548.8 pt total)
+    CGFloat scale = 1.6;
+    CGFloat spacing = 16.0;
+    if (count == 2) {
+        scale = 1.25;
+        spacing = 14.0;
+    } else if (count == 3) {
+        scale = 0.98;
+        spacing = 10.0;
+    } else if (count >= 4) {
+        scale = 0.82;
+        spacing = 8.0;
+    }
+
+    CGFloat barW = 160.0 * scale;
+    CGFloat barH = 32.0 * scale;
+    CGFloat totalW = count * barW + (count - 1) * spacing;
 
     UIWindow *window = self.rootView.window ?: [self findGameWindow];
     CGFloat bottomInset = 16.0;
@@ -906,28 +1038,29 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         if (window) bottomInset = MAX(bottomInset, window.safeAreaInsets.bottom + 4.0);
     }
 
-    CGRect newFrame = CGRectMake((window.bounds.size.width - singleBarW) / 2.0,
-                                 window.bounds.size.height - totalH - bottomInset,
-                                 singleBarW, totalH);
+    CGRect newFrame = CGRectMake((window.bounds.size.width - totalW) / 2.0,
+                                 window.bounds.size.height - barH - bottomInset,
+                                 totalW, barH);
     self.containerView.frame = newFrame;
 
     // Adjust view count
-    while (self.barViews.count < bosses.size()) {
-        SingleBossBarView *barView = [[SingleBossBarView alloc] initWithFrame:CGRectMake(0, 0, singleBarW, singleBarH)];
+    while (self.barViews.count < count) {
+        SingleBossBarView *barView = [[SingleBossBarView alloc] initWithFrame:CGRectMake(0, 0, barW, barH)];
         [self.containerView addSubview:barView];
         [self.barViews addObject:barView];
     }
-    while (self.barViews.count > bosses.size()) {
+    while (self.barViews.count > count) {
         SingleBossBarView *last = [self.barViews lastObject];
         [last removeFromSuperview];
         [self.barViews removeLastObject];
     }
 
-    // Stack bottom-up (main boss at bottom)
-    for (size_t i = 0; i < bosses.size(); ++i) {
+    // Lay out horizontally side-by-side from left to right on the bottom line
+    for (size_t i = 0; i < count; ++i) {
         SingleBossBarView *view = self.barViews[i];
-        CGFloat y = (bosses.size() - 1 - i) * (singleBarH + spacing);
-        view.frame = CGRectMake(0, y, singleBarW, singleBarH);
+        [view applyScale:scale];
+        CGFloat x = i * (barW + spacing);
+        view.frame = CGRectMake(x, 0, barW, barH);
         [view updateWithData:bosses[i] bundle:self.modBundle];
     }
 }

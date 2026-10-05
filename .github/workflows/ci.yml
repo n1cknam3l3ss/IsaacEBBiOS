@@ -44,19 +44,22 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.5
-          name: "Isaac Enhanced Boss Bars iOS v1.0.5"
+          tag_name: v1.0.6
+          name: "Isaac Enhanced Boss Bars iOS v1.0.6"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.5)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.6)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.0.5:
-            - **Beast Arena Background Entity Fix**: Filtered out Isaac's background silhouette entities (`Variants 100..104` and sub-parts `2, 3, 11, etc.`), eliminating duplicate stacked Beast bars.
-            - **Sequential Beast Fight Support**: During the entire Beast encounter, exactly one active boss bar is displayed at a time (Ultra Famine -> Ultra Pestilence -> Ultra War -> Ultra Death -> The Beast) featuring the authentic volcanic Beast bar style and fire overlay.
-            - **Dogma Phase 1 HP Tracking**: Fixed invulnerability bug by correctly targeting Dogma's TV (`Variant 1`) instead of the cord baby (`Variant 0`), allowing Phase 1 HP to properly drain as damage is dealt.
-            - **Dogma Phase 2 Angel Wings Icon**: Fixed icon animation update so Dogma Phase 2 cleanly transitions to the animated winged angel portrait instead of stretching the TV frame.
-            - **Accurate Entity Status Bitmask**: Corrected entity status flags offset to `0x560` (Isaac arm64 engine address), eliminating spurious charm heart badges and accurately displaying poison, burn, freeze, and slow effects.
+            ### What's New in v1.0.6:
+            - **No Bars in Cutscenes & Death Animations**: Now checks `FLAG_DONT_COUNT_BOSS_HP` (`1ULL << 31`) and `FLAG_BOSSDEATH_TRIGGERED` (`1ULL << 20`) so boss bars immediately vanish when a boss dies or when cutscenes trigger.
+            - **Full Double Trouble Support**: Fixed deduplication bug that previously dropped identical boss types. Double Haunt, Double Monstro, and dual boss encounters now properly display both boss bars.
+            - **Dynamic Horizontal Multi-Bar Layout**: Multiple boss bars are now placed side-by-side on a single horizontal row at the bottom and dynamically scaled (scale 1.25 for 2 bosses, 0.98 for 3 bosses, 0.82 for 4 bosses) to take minimal vertical space and prevent obscuring the gameplay arena.
+            - **Mega Satan Multi-Part Bars**: Mega Satan Head, Left Hand, and Right Hand now each have their own independent HP bars displayed side-by-side in natural visual order.
+            - **Delirium Isolation**: When fighting Delirium (`Type 412`), all other boss types/transformations are suppressed so no spurious extra boss bars spawn.
+            - **Beast Fight Pre-Engagement Fix**: Prevented The Beast's bar from appearing during the arena intro while swimming in the background (`Variants 100..104`). The bar only appears once Ultra Harbingers actually engage, and The Beast's bar emerges after Death is defeated.
+            - **Instant Damage Flash**: Removed the lagging delayed decaying soulslike bar. Boss bars now flash bright white upon taking damage with crisp immediate HP updates, matching the PC mod and vanilla Isaac.
+            - **Prominent Status Effect Badges**: Moved status badges to float directly along the top border of the HP bar with high-contrast drop shadows, clearly showing poison, burn, freeze, slow, fear, charm, confusion, and more.
 
             ### Installation:
             - **LiveContainer / Jailed**:
