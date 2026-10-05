@@ -542,48 +542,12 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         self.fillContainer.frame = CGRectMake(self.fillOffsetX, 0, targetWidth, self.barH);
     } completion:nil];
 
-    // 4. Status Effect Badges (floating directly above the HP bar)
-    std::vector<int> activeStatusIndices;
-    if (data.flags & FLAG_POISON)     activeStatusIndices.push_back(5);  // Green droplet
-    if (data.flags & FLAG_BURN)       activeStatusIndices.push_back(0);  // Orange flame
-    if (data.flags & FLAG_FREEZE)     activeStatusIndices.push_back(12); // Cyan snowflake
-    if (data.flags & FLAG_SLOW)       activeStatusIndices.push_back(6);  // Snail
-    if (data.flags & FLAG_CHARM)      activeStatusIndices.push_back(1);  // Pink heart
-    if (data.flags & FLAG_FEAR)       activeStatusIndices.push_back(3);  // Purple face
-    if (data.flags & FLAG_CONFUSION)  activeStatusIndices.push_back(2);  // Confusion stars
-    if (data.flags & FLAG_BLEED_OUT)  activeStatusIndices.push_back(9);  // Bleed out
-    if (data.flags & FLAG_BAITED)     activeStatusIndices.push_back(10); // Baited
-    if (data.flags & FLAG_MAGNETIZED) activeStatusIndices.push_back(13); // Magnetized
-    if (data.flags & FLAG_WEAKNESS)   activeStatusIndices.push_back(15); // Weakness
-
-    CGFloat badgeSize = 14.0 * _pixelScale;
-    CGFloat badgeSpacing = 2.0 * _pixelScale;
-    CGFloat startX = 22.0 * _pixelScale;
-
-    while (_statusIcons.count < activeStatusIndices.size()) {
-        UIImageView *iv = [[UIImageView alloc] initWithFrame:CGRectZero];
-        iv.contentMode = UIViewContentModeScaleAspectFit;
-        iv.layer.magnificationFilter = kCAFilterNearest;
-        iv.layer.minificationFilter = kCAFilterNearest;
-        iv.layer.shadowColor = UIColor.blackColor.CGColor;
-        iv.layer.shadowOpacity = 0.85;
-        iv.layer.shadowRadius = 1.0;
-        iv.layer.shadowOffset = CGSizeMake(0, 1.0);
-        [_statusContainer addSubview:iv];
-        [_statusIcons addObject:iv];
+    // 4. Status Effect Badges (disabled until exact status bitfield offset is verified)
+    _statusContainer.hidden = YES;
+    for (UIImageView *iv in _statusIcons) {
+        [iv removeFromSuperview];
     }
-    while (_statusIcons.count > activeStatusIndices.size()) {
-        UIImageView *last = [_statusIcons lastObject];
-        [last removeFromSuperview];
-        [_statusIcons removeLastObject];
-    }
-
-    for (size_t i = 0; i < activeStatusIndices.size(); ++i) {
-        UIImageView *iv = _statusIcons[i];
-        iv.image = [cache statusIconForIndex:activeStatusIndices[i] bundle:bundle];
-        iv.frame = CGRectMake(startX + i * (badgeSize + badgeSpacing), 0, badgeSize, badgeSize);
-    }
-    [self bringSubviewToFront:_statusContainer];
+    [_statusIcons removeAllObjects];
 }
 
 @end
@@ -762,6 +726,20 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
             SafeRead(roomData + kRoomConfigTypeOffset, roomType);
         }
     }
+    if (roomType < 1 || roomType > 29) {
+        roomType = 0;
+    }
+
+    // Only display boss bars in rooms that actually host boss fights:
+    // RoomType 5:  ROOM_BOSS (Standard floor bosses, Delirium, Mother, Mega Satan, Beast)
+    // RoomType 15: ROOM_BOSSRUSH (Boss Rush)
+    // RoomType 6:  ROOM_MINIBOSS (Mini-boss rooms: Sins, Krampus)
+    // RoomType 11: ROOM_CHALLENGE (Challenge room boss waves)
+    bool isBossFightRoom = (roomType == 5 || roomType == 15 || roomType == 6 || roomType == 11);
+    if (!isBossFightRoom) {
+        [self setOverlayVisible:NO];
+        return;
+    }
 
     // Scan entities in current room
     uintptr_t entitiesArrayPtr = 0;
@@ -879,19 +857,27 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
             }
         }
 
-        // 4. Worm segments (Larry Jr 19, Chub 28, Pin 62, Turdlet 918):
-        if (type == 19 || type == 28 || type == 62 || type == 918) {
-            uintptr_t parent = 0;
-            if (SafeRead(entity + kEntityParentOffset, parent) && parent != 0) {
-                continue; // Skip body/tail segments, keep only head (parent == 0)
-            }
-        }
+        // 4. Segmented worm bosses (Larry Jr 19, Chub/Chad/Carrion 28, Pin/Scolex/Frail/Wormwood 62, Turdlet 918)
+        bool isSegmentedWorm = (type == 19 || type == 28 || type == 62 || type == 918);
 
-        // 5. Boss Ignore List (known non-boss helpers & sub-parts)
+        // 5. Boss Ignore List & sub-entities
         if (type == 45 && variant == 0) continue;    // Mom doors (Mom herself is 45.10)
+        if (type == 79 && variant == 12) continue;   // Blighted Ovum invincible ghost
+        if (type == 79 && (variant == 0 || variant == 1 || variant == 2)) {
+            // Prevent umbilical cord segments or clone helpers from duplicating main twin bar
+            bool alreadyExists = false;
+            for (const auto &existing : activeBosses) {
+                if (existing.type == 79 && existing.variant == variant) {
+                    alreadyExists = true;
+                    break;
+                }
+            }
+            if (alreadyExists) continue;
+        }
         if (type == 266 && (variant == 1 || variant == 2)) continue; // Mama Gurdy hands
         if (type == 294 && variant == 0) continue;   // Ultra Greed door
-        if (type == 411 && variant == 1) continue;   // Big Horn sub
+        if (type == 404 && variant != 0) continue;   // Little Horn black holes / balls
+        if (type == 411 && variant != 0) continue;   // Big Horn sub / holes
         if (type == 866 && variant == 0) continue;   // Dark Esau (player hazard, not room boss)
         if (type == 867 && variant == 0) continue;   // Mother's shadow
         if (type == 906 && variant == 1) continue;   // Hornfel decoy
@@ -900,90 +886,91 @@ static UIImage *TintImage(UIImage *image, UIColor *color) {
         if (type == 964 && variant == 0) continue;   // Dummy NPC
 
         const BossBarInfo *info = FindBossInfo(type, variant);
+        if (!info) continue; // ONLY real verified bosses get health bars!
 
-        // Eligible if in database OR in a boss room with significant HP
-        if (info || (roomType == 5 && maxHp >= 40.0f)) {
-            // Check phase replacement for single-boss sequences (Dogma, Beast, Mega Satan 2)
-            bool shouldMergeOrReplace = false;
-            for (auto &existing : activeBosses) {
-                if (type == 950 && existing.type == 950) {
-                    // Dogma Phase 2 (Angel) replaces Phase 1 (TV)
-                    if (variant == 2 && existing.variant == 1) {
-                        existing.entityPtr = entity;
-                        existing.variant = variant;
-                        existing.currentHP = hp;
-                        existing.maxHP = maxHp;
-                        existing.flags = flags;
-                        if (info) {
-                            existing.name = info->name;
-                            existing.iconRelPath = info->iconRelPath;
-                            BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
-                            existing.barRelPath = style.barRelPath;
-                            existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
-                            existing.isDefaultTint = style.isDefaultTint;
-                        }
-                        shouldMergeOrReplace = true;
-                        break;
-                    }
-                } else if (type == 951 && existing.type == 951) {
-                    // Beast sequence: active phase replaces previous
-                    if (variant != existing.variant) {
-                        existing.entityPtr = entity;
-                        existing.variant = variant;
-                        existing.currentHP = hp;
-                        existing.maxHP = maxHp;
-                        existing.flags = flags;
-                        if (info) {
-                            existing.name = info->name;
-                            existing.iconRelPath = info->iconRelPath;
-                            BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
-                            existing.barRelPath = style.barRelPath;
-                            existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
-                            existing.isDefaultTint = style.isDefaultTint;
-                        }
-                        shouldMergeOrReplace = true;
-                        break;
-                    }
-                } else if (type == 275 && existing.type == 274) {
-                    // Mega Satan Phase 2 replaces Phase 1
+        // Check phase replacement & segmented boss merging
+        bool shouldMergeOrReplace = false;
+        for (auto &existing : activeBosses) {
+            // Segmented worm bosses: sum all segments into 1 unified health bar!
+            if (isSegmentedWorm && existing.type == type && existing.variant == variant) {
+                existing.currentHP += hp;
+                existing.maxHP += maxHp;
+                shouldMergeOrReplace = true;
+                break;
+            }
+
+            if (type == 950 && existing.type == 950) {
+                // Dogma Phase 2 (Angel) replaces Phase 1 (TV)
+                if (variant == 2 && existing.variant == 1) {
                     existing.entityPtr = entity;
-                    existing.type = 275;
                     existing.variant = variant;
                     existing.currentHP = hp;
                     existing.maxHP = maxHp;
                     existing.flags = flags;
-                    if (info) {
-                        existing.name = info->name;
-                        existing.iconRelPath = info->iconRelPath;
-                        BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
-                        existing.barRelPath = style.barRelPath;
-                        existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
-                        existing.isDefaultTint = style.isDefaultTint;
-                    }
+                    existing.name = info->name;
+                    existing.iconRelPath = info->iconRelPath;
+                    BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+                    existing.barRelPath = style.barRelPath;
+                    existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+                    existing.isDefaultTint = style.isDefaultTint;
                     shouldMergeOrReplace = true;
                     break;
                 }
+            } else if (type == 951 && existing.type == 951) {
+                // Beast sequence: active phase replaces previous
+                if (variant != existing.variant) {
+                    existing.entityPtr = entity;
+                    existing.variant = variant;
+                    existing.currentHP = hp;
+                    existing.maxHP = maxHp;
+                    existing.flags = flags;
+                    existing.name = info->name;
+                    existing.iconRelPath = info->iconRelPath;
+                    BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+                    existing.barRelPath = style.barRelPath;
+                    existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+                    existing.isDefaultTint = style.isDefaultTint;
+                    shouldMergeOrReplace = true;
+                    break;
+                }
+            } else if (type == 275 && existing.type == 274) {
+                // Mega Satan Phase 2 replaces Phase 1
+                existing.entityPtr = entity;
+                existing.type = 275;
+                existing.variant = variant;
+                existing.currentHP = hp;
+                existing.maxHP = maxHp;
+                existing.flags = flags;
+                existing.name = info->name;
+                existing.iconRelPath = info->iconRelPath;
+                BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+                existing.barRelPath = style.barRelPath;
+                existing.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+                existing.isDefaultTint = style.isDefaultTint;
+                shouldMergeOrReplace = true;
+                break;
             }
-            if (shouldMergeOrReplace) {
-                seenEntities.insert(entity);
-                continue;
-            }
+        }
+        if (shouldMergeOrReplace) {
+            seenEntities.insert(entity);
+            continue;
+        }
 
-            ActiveBossData b;
-            b.entityPtr = entity;
-            b.type = type;
-            b.variant = variant;
-            b.name = info ? info->name : "Boss";
-            b.iconRelPath = info ? info->iconRelPath : "boss.png";
+        ActiveBossData b;
+        b.entityPtr = entity;
+        b.type = type;
+        b.variant = variant;
+        b.name = info->name;
+        b.iconRelPath = info->iconRelPath;
 
-            // Resolve authentic thematic bar style
-            BossBarStyleInfo style = GetBarStyleInfo(info ? info->barStyle : nullptr);
-            b.barRelPath = style.barRelPath;
-            b.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
-            b.isDefaultTint = style.isDefaultTint;
+        // Resolve authentic thematic bar style
+        BossBarStyleInfo style = GetBarStyleInfo(info->barStyle);
+        b.barRelPath = style.barRelPath;
+        b.overlayRelPath = style.overlayRelPath ? style.overlayRelPath : "";
+        b.isDefaultTint = style.isDefaultTint;
 
-            b.currentHP = hp;
-            b.maxHP = maxHp;
+        b.currentHP = hp;
+        b.maxHP = maxHp;
             b.flags = flags;
 
             seenEntities.insert(entity);

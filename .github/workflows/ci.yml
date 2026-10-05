@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: build-and-release
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-15
@@ -44,17 +48,20 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.7
-          name: "Isaac Enhanced Boss Bars iOS v1.0.7"
+          tag_name: v1.0.8
+          name: "Isaac Enhanced Boss Bars iOS v1.0.8"
           body: |
-            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.7)
+            ## The Binding of Isaac: Enhanced Boss Bars for iOS (v1.0.8)
 
             Standalone native port of the popular Steam Workshop mod **Enhanced Boss Bars** for The Binding of Isaac: Repentance on iOS.
 
-            ### What's New in v1.0.7:
-            - **Hidden During Intro "VS" Splash Screens & Cinematics**: Boss bars are now completely hidden during the intro VS splash animations (e.g., "Isaac VS It Lives", "Isaac VS Dogma") and active in-game cutscene events. Bars now appear precisely when actual room gameplay begins and Isaac can move.
-            - **Engine State Checks**: Added reads for `Game + 0x25810` (VersusScreen active state), `Game + 0x10d45a` (active gameplay flag), and `Game + 0x21560` (cutscene event) matching the game engine's internal HUD render suppression logic.
-            - **All v1.0.6 Features Retained**: Full horizontal multi-bar layout, dynamic scaling, Double Trouble deduplication, Mega Satan multi-parts, Delirium isolation, Beast sequence handling, instant damage flashing, and floating status effect badges.
+            ### What's New in v1.0.8:
+            - **Strict Boss Room Filtering**: Boss bars are now exclusively displayed in rooms that host boss encounters (Boss rooms, Boss Rush, Mini-boss rooms, Challenge rooms). Regular exploration rooms (spiders, mulligans, wandering mobs) no longer render any boss bars.
+            - **Segmented Worm Boss HP Merging**: Segmented bosses like Larry Jr, Chub, Chad, Carrion Queen, Pin, Scolex, Frail, Wormwood, and Turdlet now automatically sum the HP and MaxHP of all their body/tail segments into a single unified health bar instead of cluttering the screen with 4-8 separate bars.
+            - **Gemini & Blighted Ovum Fixes**: Eliminated duplicate health bars caused by Gemini's umbilical cord tether segments. Filtered out Blighted Ovum's invincible ghost baby.
+            - **Non-Boss Helper & Projectile Filtering**: Prevented Little Horn black hole spheres and Big Horn sub-entities from generating boss bars.
+            - **Disabled Broken Status Effect Badges**: Removed the static row of fake status badges (poison, freeze, charm, etc.) caused by unverified bitfield offsets.
+            - **Exact (Type, Variant) Matching**: Removed loose fallback matching in boss definitions to ensure only genuine bosses get custom bars.
 
             ### Installation:
             - **LiveContainer / Jailed**:

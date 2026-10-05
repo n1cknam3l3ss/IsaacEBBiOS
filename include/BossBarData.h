@@ -234,31 +234,10 @@ inline const std::unordered_map<int64_t, BossBarInfo>& GetBossDefinitions() {
 
 inline const BossBarInfo* FindBossInfo(int32_t type, int32_t variant) {
     const auto& map = GetBossDefinitions();
-    // 1. Exact match (type, variant)
+    // 1. Exact match (type, variant) ONLY
     int64_t key = ((int64_t)type << 16) | variant;
     auto it = map.find(key);
     if (it != map.end()) return &it->second;
 
-    // Never fallback for multi-variant bosses (Dogma, Beast, etc.)
-    if (type == 950 || type == 951) {
-        return nullptr;
-    }
-
-    // 2. Check variant 0 fallback
-    key = ((int64_t)type << 16) | 0;
-    it = map.find(key);
-    if (it != map.end()) return &it->second;
-
-    // 3. Check variant 10 fallback (common in Isaac)
-    key = ((int64_t)type << 16) | 10;
-    it = map.find(key);
-    if (it != map.end()) return &it->second;
-
-    // 4. Fallback search by type
-    for (const auto& pair : map) {
-        if (pair.second.type == type) {
-            return &pair.second;
-        }
-    }
     return nullptr;
 }
