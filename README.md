@@ -7,8 +7,7 @@ Standalone native port of the popular Steam Workshop mod [Enhanced Boss Bars](ht
 - **Custom Boss Health Bars**: Replaces the basic vanilla boss health bar with stylish custom health bars.
 - **Pixel-Art Boss Portraits**: Includes crisp, nearest-neighbor rendered portraits for over 160+ bosses and champion variants.
 - **Live Status Effect Badges**: Real-time status indicators for Poison, Burn, Freeze, Slow, Charm, and Fear.
-- **Multi-Boss Support**: Smoothly handles multiple bosses (Double Trouble, Larry Jr. segments, etc.).
-- **60/120 FPS Native Performance**: Powered by UIKit and CoreAnimation, zero touch interference, and minimal battery overhead.
+- **Multi-Boss Support**: Smoothly handles multiple bosses (Double Trouble, etc.).
 
 ## Installation
 
